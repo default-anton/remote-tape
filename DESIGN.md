@@ -511,6 +511,76 @@ This is much more valuable than premature metrics.
 
 ---
 
+## UI technology decision
+
+Use one small TypeScript/React frontend codebase for both user-facing surfaces:
+
+1. **Control UI**: dashboard, session creation, session status, join-link waiting pages, and manual download confirmation. Served by the control-plane Go binary.
+2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session droplet. The room UI must not route recording media or chunk ingest through the control plane.
+
+Recommended layout:
+
+```txt
+web/
+  package.json
+  vite.config.ts
+  tsconfig.json
+  index.control.html
+  index.room.html
+  src/
+    control/
+    room/
+    shared/
+```
+
+Vite builds two static entrypoints from one workspace. Keep shared UI/client utilities in `src/shared`; keep control-plane and room-specific code separate so architecture boundaries stay obvious.
+
+### UI stack
+
+- **Language**: TypeScript, strict mode.
+- **UI**: React.
+- **Build/dev server**: Vite.
+- **Lint**: oxlint.
+- **Format**: oxfmt.
+- **Package manager**: pnpm.
+- **Routing**: React Router. Use URL state for durable navigation; avoid custom global routing state.
+- **Server state**: TanStack Query for API reads/mutations, retries, loading states, and cache invalidation.
+- **Runtime validation**: Zod at API/WebRTC/storage boundaries only. Do not wrap every internal object in schemas.
+- **Testing**:
+  - Vitest for unit tests and pure state machines.
+  - React Testing Library for important component behavior.
+  - MSW for deterministic API fixtures.
+  - Playwright only for smoke flows that must prove browser behavior.
+- **Styling**: plain CSS with CSS modules and design tokens in CSS custom properties. No Tailwind, CSS-in-JS, Sass, or component framework until repetition proves the need.
+- **Icons**: inline SVG or a tiny icon package only when needed. No broad design-system dependency at the start.
+- **Forms**: native React forms first. Add React Hook Form only when form complexity actually appears.
+- **State management**: React local state, URL state, and TanStack Query. No Redux/Zustand/Jotai initially.
+
+### UI defaults
+
+- Prefer semantic HTML, keyboard support, and visible recording/network state over visual polish.
+- Treat reconnecting, stalled uploads, low disk, permission denial, and finalization as first-class states in the room UI.
+- Keep API error messages actionable and preserve the underlying operation/status/event ID when available.
+- The dashboard can be plain. The recording path UX must be explicit, calm, and hard to misuse.
+- Use browser APIs directly where they are simple; wrap only unstable or cross-cutting behavior such as recorder state, upload queues, and LiveKit connection lifecycle.
+
+### UI feedback loop
+
+Required local commands once `web/` exists:
+
+```txt
+pnpm --dir web dev
+pnpm --dir web build
+pnpm --dir web test
+pnpm --dir web lint
+pnpm --dir web format:check
+pnpm --dir web typecheck
+```
+
+Early UI slices should run against a fake API/MSW scenario before real DigitalOcean, Cloudflare, LiveKit, or recording integration is required. Browser-visible flows need deterministic fixtures so failures are reproducible from the CLI.
+
+---
+
 ## What not to build yet
 
 Do **not** start with:
