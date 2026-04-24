@@ -13,6 +13,7 @@ remote-tape is a free, open-source remote podcast recorder:
   - Give each active recorded source its own resumable upload stream.
   - Resume from the last committed chunk after reconnect without corrupting prior data.
 - Use Cloudflare DNS. Keep the control plane, session provisioning, and runtime infrastructure in DigitalOcean unless a task explicitly chooses another provider.
+- Project state is blank slate: private, unreleased, and no production users/data. Do not optimize for backward compatibility or migrations unless explicitly asked.
 
 ## Top priorities / invariants
 
