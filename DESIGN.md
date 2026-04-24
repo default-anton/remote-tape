@@ -472,9 +472,50 @@ Minimum viable:
 - DO and Cloudflare tokens only live on the control-plane droplet.
 - Session droplets never receive DO/Cloudflare credentials.
 - Internal callback endpoints require machine token.
-- Dashboard auth can start simple: single admin password or magic link, depending on product direction.
+- Dashboard auth starts as single-admin cookie auth, not OAuth or magic links.
 
-Avoid OAuth/user-account complexity until needed.
+### Control-plane dashboard auth
+
+Use Rails-style cookie auth with boring, proven primitives:
+
+- `GET /login`, `POST /login`, and `POST /logout`.
+- One admin identity: `admin`.
+- Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using Argon2id or bcrypt.
+- Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. Plaintext may be allowed only for local dev behind an explicit dev flag.
+- Use a signed and encrypted session cookie from a proven Go library; do not hand-roll cookie crypto.
+- Cookie contains only minimal session claims such as subject, issued-at, and expiry. Do not store secrets, tokens, or password hashes in the cookie.
+- Cookie flags in production: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and a bounded lifetime.
+- Protect all browser-initiated unsafe methods with CSRF tokens.
+- Rate-limit login attempts per IP, with structured logs for failures.
+
+Protected by dashboard auth:
+
+```http
+POST /api/sessions
+GET  /api/sessions/:id
+POST /api/sessions/:id/start
+POST /api/sessions/:id/end
+POST /api/sessions/:id/confirm-download
+POST /api/sessions/:id/retry
+```
+
+CSRF-protected because they use cookie auth:
+
+```http
+POST /api/sessions
+POST /api/sessions/:id/start
+POST /api/sessions/:id/end
+POST /api/sessions/:id/confirm-download
+POST /api/sessions/:id/retry
+POST /logout
+```
+
+Join links and session-droplet callbacks are separate auth boundaries:
+
+- `GET /join/:slug?token=...` uses the per-session host or guest token and does not require dashboard login.
+- `/internal/sessions/:id/...` uses the per-session machine token and does not use dashboard cookies or CSRF.
+
+Avoid OAuth, user accounts, teams, and email magic links until the product actually needs them.
 
 ---
 
