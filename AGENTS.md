@@ -25,6 +25,14 @@ remote-tape is a free, open-source remote podcast recorder:
 - Prefer boring, observable systems. Critical paths need logs, reproducible tests, or other fast feedback loops.
 - Default to recoverable operations: repeated control-plane requests or worker retries must not leak droplets, duplicate sessions, or corrupt uploads.
 
+## Browser recording expectations
+
+- Target podcast-grade voice, not studio-grade DAW capture.
+- Expect browser/container reality: Opus in WebM, commonly 48 kHz; exact device sample rate/channel count may vary by browser and hardware.
+- Default mic recording target: mono Opus around 96-128 kbps; use higher only when it proves useful for music/stereo sources.
+- Prefer stable capture and upload over max bitrate. Never increase quality settings if it risks older hardware, mobile clients, or chunk upload reliability.
+- Treat browser audio constraints as requests, not guarantees; verify actual track/settings when possible.
+
 ## Likely users
 
 - indie podcasters/youtubers with remote guests
