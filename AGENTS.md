@@ -6,7 +6,7 @@ remote-tape is a free, open-source remote podcast recorder:
   - Public join links hit the control-plane droplet first, then redirect to the per-session droplet for that room.
 - disposable per-session droplets in DigitalOcean handle recording and live call (like Google Meet). They should use a small Linux image and avoid runtime dependency installation when possible.
   - Each session droplet serves the room app and runs LiveKit 1.10.1 (w/ built-in TURN) plus our recording server (Go 1.26.1).
-  - Create session droplets on demand; destroy them when the session and upload finalization are safely complete.
+  - Create session droplets on demand; destroy them only after upload finalization is safely complete and the user has manually downloaded the uploaded audio/video recordings from the session server.
   - Treat droplet provisioning/teardown as a critical path: make it idempotent, observable, retryable, and safe after partial failure.
 - local per-seat recording happens in the browser. While recording, the browser continuously uploads chunked media for each active source (camera, mic, screen share, other inputs) to the per-session recording server in the background. Video res is 1080p30 or fallback to 720p30.
   - Treat upload as chunked ingest, not one final file transfer.

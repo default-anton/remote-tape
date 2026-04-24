@@ -77,6 +77,7 @@ sessions (
   -- ready
   -- active
   -- finalizing
+  -- awaiting_manual_download
   -- teardown_pending
   -- tearing_down
   -- ended
@@ -97,6 +98,9 @@ sessions (
   created_at datetime not null,
   updated_at datetime not null,
   ready_at datetime,
+  finalized_at datetime,
+  download_confirmed_at datetime,
+  download_confirmed_by text,
   ended_at datetime,
   expires_at datetime,
 
@@ -131,6 +135,8 @@ dns.create.started
 dns.create.succeeded
 session.ready
 session.finalization.started
+session.downloads_ready
+session.download_confirmed
 droplet.destroy.started
 droplet.destroy.succeeded
 ```
@@ -148,6 +154,7 @@ created
   -> ready
   -> active
   -> finalizing
+  -> awaiting_manual_download
   -> teardown_pending
   -> tearing_down
   -> ended
@@ -172,8 +179,11 @@ POST /api/sessions
 GET  /api/sessions/:id
 POST /api/sessions/:id/start
 POST /api/sessions/:id/end
+POST /api/sessions/:id/confirm-download
 POST /api/sessions/:id/retry
 ```
+
+`confirm-download` is host/admin-only. It is allowed only after the session droplet has finalized uploads/manifests, records `download_confirmed_at`, and transitions the session to `teardown_pending`.
 
 ### Join links
 
@@ -293,21 +303,29 @@ host ends session
   -> control plane marks session finalizing
   -> session droplet finishes uploads/manifests
   -> session droplet calls /internal/sessions/:id/finalized
+  -> control plane marks awaiting_manual_download
+  -> host downloads audio/video recordings from the session server
+  -> host explicitly confirms download in the dashboard
   -> control plane marks teardown_pending
   -> reconciler deletes DNS
   -> reconciler destroys droplet
   -> session ended
 ```
 
-Have a hard TTL fallback:
+Have hard fallback policies:
 
 ```txt
 if finalizing > N hours:
   mark failed_finalization
   require manual/admin retry or forced teardown
+
+if awaiting_manual_download > N days:
+  keep droplet alive by default
+  show admin warning/cost notice
+  require explicit manual/admin forced teardown
 ```
 
-Do not silently destroy a droplet that may still have unfinalized recordings.
+Finalization means recordings are safely prepared. It does not mean the droplet is safe to destroy. Do not silently destroy a droplet that may still have unfinalized or undownloaded recordings.
 
 ---
 
@@ -344,6 +362,11 @@ waiting_for_dns:
 
 finalizing:
   wait for finalized callback or timeout
+
+awaiting_manual_download:
+  keep droplet alive
+  show download links/instructions
+  do not teardown automatically
 
 teardown_pending:
   ensure dns deleted
