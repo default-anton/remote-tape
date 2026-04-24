@@ -1,40 +1,27 @@
 # Project Overview
 
-remote-tape is a free, open-source remote podcast recorder:
+remote-tape is a free, open-source remote podcast recorder.
 
-- one persistent DigitalOcean control-plane droplet manages sessions, stores join links/session state, provisions per-session droplets, and serves the dashboard app.
-  - Public join links hit the control-plane droplet first, then redirect to the per-session droplet for that room.
-- disposable per-session droplets in DigitalOcean handle recording and live call (like Google Meet). They should use a small Linux image and avoid runtime dependency installation when possible.
-  - Each session droplet serves the room app and runs LiveKit 1.10.1 (w/ built-in TURN) plus our recording server (Go 1.26.1).
-  - Create session droplets on demand; destroy them only after upload finalization is safely complete and the user has manually downloaded the uploaded audio/video recordings from the session server.
-  - Treat droplet provisioning/teardown as a critical path: make it idempotent, observable, retryable, and safe after partial failure.
-- local per-seat recording happens in the browser. While recording, the browser continuously uploads chunked media for each active source (camera, mic, screen share, other inputs) to the per-session recording server in the background. Video res is 1080p30 or fallback to 720p30.
-  - Treat upload as chunked ingest, not one final file transfer.
-  - Give each active recorded source its own resumable upload stream.
-  - Resume from the last committed chunk after reconnect without corrupting prior data.
-- Use Cloudflare DNS. Keep the control plane, session provisioning, and runtime infrastructure in DigitalOcean unless a task explicitly chooses another provider.
-- Project state is blank slate: private, unreleased, and no production users/data. Do not optimize for backward compatibility or migrations unless explicitly asked.
+Source of truth for architecture, lifecycle, recording targets, and implementation slices: `DESIGN.md`.
 
-## Top priorities / invariants
+## Architecture boundaries
 
-- Reliability, robustness, and stability first.
-- Design for bad networks. Assume packet loss, reconnects, slow uploads, and intermittent failure, especially for guests on poor connections.
-- Performance first. Support older hardware and low-end Android phones.
+- Control plane: persistent DigitalOcean droplet for dashboard, sessions, join links, provisioning, DNS, redirects, cleanup, and reconciliation.
+- Session runtime: disposable per-session DigitalOcean droplet for room app, LiveKit/TURN, recording ingest, local session data, and finalization.
+- Cloudflare owns DNS. DigitalOcean owns runtime infrastructure unless a task explicitly says otherwise.
+- Do not put recording media, LiveKit media, TURN, or chunk ingest on the control plane.
+
+## Core invariants
+
+- Reliability and recoverability over features.
+- Design for bad networks: reconnects, packet loss, slow uploads, and mobile clients.
 - Protect the recording path over convenience features.
-- Keep the control plane, live call path, local capture path, and upload path loosely coupled. Failure in one path must not silently corrupt the others.
-- Prefer boring, observable systems. Critical paths need logs, reproducible tests, or other fast feedback loops.
-- Default to recoverable operations: repeated control-plane requests or worker retries must not leak droplets, duplicate sessions, or corrupt uploads.
+- Never corrupt or overwrite previously committed recording chunks.
+- Keep control plane, live call, local capture, and upload paths loosely coupled.
+- Make provisioning/teardown idempotent, observable, retryable, and safe after partial failure.
+- Do not destroy a session droplet until upload finalization is safe and recordings have been manually downloaded.
 
-## Browser recording expectations
+## Project state
 
-- Target podcast-grade voice, not studio-grade DAW capture.
-- Expect browser/container reality: Opus in WebM, commonly 48 kHz; exact device sample rate/channel count may vary by browser and hardware.
-- Default mic recording target: mono Opus around 96-128 kbps; use higher only when it proves useful for music/stereo sources.
-- Prefer stable capture and upload over max bitrate. Never increase quality settings if it risks older hardware, mobile clients, or chunk upload reliability.
-- Treat browser audio constraints as requests, not guarantees; verify actual track/settings when possible.
-
-## Likely users
-
-- indie podcasters/youtubers with remote guests
-- developer-creators
-- people who care about controlling cost and owning their raw recordings
+- Blank slate: private, unreleased, no production users/data.
+- Do not optimize for backward compatibility, migrations, or legacy support unless explicitly asked.

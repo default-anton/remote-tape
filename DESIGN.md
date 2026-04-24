@@ -1,3 +1,7 @@
+# remote-tape design
+
+remote-tape is a free, open-source remote podcast recorder for indie podcasters, youtubers, developer-creators, and people who want low-cost, self-owned raw recordings.
+
 Simplest viable control plane:
 
 > One small persistent DigitalOcean droplet running one Go service, one SQLite database, one background worker loop, and one Caddy/Nginx reverse proxy. No Kubernetes, no queue, no separate scheduler, no distributed control plane.
@@ -289,6 +293,32 @@ POST /internal/sessions/sess_123/ready
 ```
 
 Only then should the control plane mark the room as ready.
+
+---
+
+## Browser recording expectations
+
+Local per-seat recording happens in the browser. While recording, the browser continuously uploads chunked media for each active source to the per-session recording server.
+
+Audio target:
+
+- podcast-grade voice, not studio-grade DAW capture
+- Opus in WebM, commonly 48 kHz; exact sample rate/channel count varies by browser and device
+- default mic target: mono Opus around 96-128 kbps
+- use higher bitrate/stereo only when it proves useful for music or stereo sources
+
+Video target:
+
+- 1080p30 when stable
+- fallback to 720p30 on constrained devices, browsers, or networks
+
+Capture rules:
+
+- Treat upload as chunked ingest, not one final file transfer.
+- Give each active recorded source its own resumable upload stream.
+- Resume from the last committed chunk after reconnect without corrupting prior data.
+- Prefer stable capture and upload over max bitrate.
+- Treat browser media constraints as requests, not guarantees; verify actual track/settings when possible.
 
 ---
 
