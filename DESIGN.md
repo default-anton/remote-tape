@@ -298,7 +298,19 @@ Only then should the control plane mark the room as ready.
 
 ## Browser recording expectations
 
-Local per-seat recording happens in the browser. While recording, the browser continuously uploads chunked media for each active source to the per-session recording server.
+Local per-seat recording happens in the browser. While recording, the browser continuously uploads chunked media for each active recorded source to the per-session recording server.
+
+Recording is not the same as the live session. The live call should usually publish only the participant's main microphone and camera, plus temporary screen share video/audio when enabled. Recording may capture more sources than the live call.
+
+Recorded source model:
+
+- microphone audio
+- camera video
+- screen/window/tab video
+- screen/tab/system audio when the browser/OS exposes it
+- additional microphones, cameras, or capture devices when selected
+
+Treat each recorded source as independent: separate identity, metadata, recorder state, chunk stream, retry state, and manifest entry. Do not assume system audio or multiple device capture is always available; detect capabilities and show clear UI state.
 
 Audio target:
 
