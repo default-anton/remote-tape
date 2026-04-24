@@ -659,81 +659,168 @@ Those may come later. Right now they slow us down and hide the important failure
 ### Slice 1: control plane skeleton
 
 - Go HTTP server
-- SQLite
+- config/env validation
+- SQLite connection
 - migrations
-- session create/get
-- join page placeholder
 - health endpoints
+- structured logs
 
 Demo:
 
 ```txt
-Create session -> see session row -> open join link -> waiting page
+Start control plane -> /healthz passes -> migrations create the database
 ```
 
-### Slice 2: fake provisioner
+### Slice 2: session model + event timeline
 
-Implement a `Provisioner` interface with an in-memory/fake implementation.
+- `sessions` table
+- `session_events` table
+- session create/get
+- append-only lifecycle events
+- join page placeholder
+- admin/debug session page with status, IDs, errors, and timeline
 
 Demo:
 
 ```txt
-Create session -> fake provisioner marks ready -> join redirects to fake room URL
+Create session -> see session row and timeline -> open join link -> waiting page
+```
+
+### Slice 3: dashboard auth
+
+- `GET /login`
+- `POST /login`
+- `POST /logout`
+- single-admin cookie auth
+- production password hash config
+- CSRF protection for unsafe browser methods
+- login rate limiting and structured auth failure logs
+- protect dashboard/session-management APIs
+
+Demo:
+
+```txt
+Unauthenticated API call fails -> login succeeds -> create session succeeds -> logout blocks access again
+```
+
+### Slice 4: reconciler + fake provisioner
+
+Implement the state-driven in-process reconciler and a `Provisioner` interface with an in-memory/fake implementation.
+
+- reconciler loop
+- idempotent session transitions
+- persisted `last_error`
+- retry counters
+- fake droplet ID/IP/room URL
+- fake health readiness
+
+Demo:
+
+```txt
+Create session -> reconciler advances it -> fake provisioner marks ready -> join redirects to fake room URL
 ```
 
 This gives fast tests before touching DigitalOcean.
 
-### Slice 3: real DigitalOcean provisioner
+### Slice 5: real DigitalOcean provisioner
 
 - create droplet
 - tag droplet
 - adopt existing droplet by tag
 - persist droplet ID/IP
-- retry safely
+- retry safely after partial failure
+- emit lifecycle events for create/adopt/failure
 
 Demo:
 
 ```txt
-Create session -> real droplet appears -> session status updates
+Create session -> real droplet appears -> session status updates -> timeline shows each step
 ```
 
-### Slice 4: Cloudflare DNS
+### Slice 6: Cloudflare DNS
 
 - create room DNS record
-- delete DNS record
-- retry/adopt existing record
+- delete room DNS record
+- adopt/update existing record
+- retry safely after partial failure
+- persist DNS-related errors
 
 Demo:
 
 ```txt
-Create session -> room domain resolves to droplet IP
+Create session -> room domain resolves to droplet IP -> timeline shows DNS creation
 ```
 
-### Slice 5: session droplet ready callback
+### Slice 7: session-droplet callback contract
 
-- cloud-init injects config
-- droplet calls back ready
-- control plane marks ready
-- join link redirects
+- generate per-session machine token
+- store only token hash
+- inject config into cloud-init
+- authenticate internal callbacks
+- implement ready, active, finalized, and heartbeat endpoints
+- mark ready only after authenticated ready callback and healthy session droplet
 
 Demo:
 
 ```txt
-Click join link -> wait while provisioning -> redirect when ready
+Droplet boots -> calls authenticated ready callback -> control plane marks session ready
 ```
 
-### Slice 6: finalization + teardown
+### Slice 8: join redirect flow
+
+- stable control-plane join links
+- waiting page while provisioning
+- useful failed page with host retry path
+- ended page
+- redirect only when session is ready
+
+Demo:
+
+```txt
+Click join link -> wait while provisioning -> redirect when ready -> failed/ended states render clearly
+```
+
+### Slice 9: finalization + manual download gate
 
 - host ends session
-- droplet finalizes
-- control plane tears down DNS/droplet
-- timeline shows every step
+- status moves to `finalizing`
+- session droplet finalizes recordings/manifests
+- authenticated finalized callback moves session to `awaiting_manual_download`
+- dashboard shows download instructions/links
+- host/admin confirms download
+- confirmation moves session to `teardown_pending`
 
 Demo:
 
 ```txt
-Start session -> end session -> droplet destroyed safely
+End session -> finalized callback arrives -> dashboard waits for manual download confirmation -> confirm download queues teardown
 ```
+
+Finalization is not permission to destroy the droplet. Only explicit download confirmation may move the session to teardown.
+
+### Slice 10: safe teardown
+
+- reconciler deletes DNS for `teardown_pending` sessions
+- reconciler destroys the droplet only after DNS teardown is safe
+- retries are idempotent
+- terminal status becomes `ended`
+- timeline shows every teardown step
+
+Demo:
+
+```txt
+Confirm download -> DNS deleted -> droplet destroyed -> session marked ended -> timeline proves each step
+```
+
+### Required initial test coverage
+
+- HTTP handler tests for session, auth, join, and callback endpoints
+- DB migration tests
+- reconciler state-machine tests
+- fake provisioner tests
+- token hashing/auth tests
+- idempotency/adoption tests
+- finalization and teardown safety tests
 
 ---
 
