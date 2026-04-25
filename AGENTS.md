@@ -21,6 +21,13 @@ Start with `DESIGN.md` for architecture, lifecycle, recording targets, and imple
 - Make provisioning/teardown idempotent, observable, retryable, and safe after partial failure.
 - Do not destroy a session droplet until upload finalization is safe and recordings have been manually downloaded.
 
+## Before handoff
+
+- Run checks relevant to touched code; for cross-cutting changes, run all of them.
+- Go: `gofmt -w <touched .go files>`, `go test ./...`, `go vet ./...`.
+- Web: `pnpm --dir web lint`, `pnpm --dir web format:check`, `pnpm --dir web typecheck`, `pnpm --dir web test`, `pnpm --dir web build`.
+- If a check cannot be run, state the command and concrete blocker in the handoff.
+
 ## Project state
 
 - Each slice should be doable from a fresh session: read `DESIGN.md`, inspect relevant code/tests, then continue.
