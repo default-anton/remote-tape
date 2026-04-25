@@ -1,0 +1,32 @@
+# remote-tape
+
+Free, self-owned remote podcast recorder.
+
+## Control plane skeleton
+
+Run locally:
+
+```sh
+REMOTE_TAPE_DATABASE_PATH=./data/control-plane.db go run ./cmd/control-plane
+```
+
+Smoke check:
+
+```sh
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/readyz
+```
+
+Test:
+
+```sh
+go test ./...
+go vet ./...
+```
+
+Key env groups match the future Settings UI:
+
+- General: `REMOTE_TAPE_ENV`, `REMOTE_TAPE_HTTP_ADDR`, `REMOTE_TAPE_DATABASE_PATH`, `REMOTE_TAPE_CONTROL_PLANE_URL`, `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`
+- Provisioning defaults: `REMOTE_TAPE_DEFAULT_DROPLET_SIZE`, `REMOTE_TAPE_DEFAULT_REGION`, `REMOTE_TAPE_IMAGE_ID`, `REMOTE_TAPE_HEALTH_CHECK_TIMEOUT`, `REMOTE_TAPE_FINALIZATION_TIMEOUT`
+- Security: `REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_MAX_ATTEMPTS`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW`, `REMOTE_TAPE_DIGITALOCEAN_API_TOKEN`, `REMOTE_TAPE_CLOUDFLARE_API_TOKEN`
+- Cleanup policies: `REMOTE_TAPE_ORPHANED_DROPLET_TTL`, `REMOTE_TAPE_COMPLETED_SESSION_TTL`, `REMOTE_TAPE_FAILED_SESSION_TTL`, `REMOTE_TAPE_LOGS_RETENTION`

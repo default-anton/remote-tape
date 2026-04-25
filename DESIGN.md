@@ -754,14 +754,9 @@ Those may come later. Right now they slow us down and hide the important failure
 
 ## Initial implementation slices
 
-### Slice 1: control plane skeleton
+### Slice 1: control plane skeleton — implemented
 
-- Go HTTP server
-- config/env validation; align future visible settings grouping with [`docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png`](docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png)
-- SQLite connection
-- migrations
-- health endpoints
-- structured logs
+Code: `cmd/control-plane`, `internal/config`, `internal/database`, `internal/server`.
 
 Demo:
 

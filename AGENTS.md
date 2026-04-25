@@ -2,7 +2,7 @@
 
 remote-tape is a free, open-source remote podcast recorder.
 
-Source of truth for architecture, lifecycle, recording targets, and implementation slices: `DESIGN.md`.
+Start with `DESIGN.md` for architecture, lifecycle, recording targets, and implementation slices. Code is source of truth after implementation.
 
 ## Architecture boundaries
 
@@ -23,5 +23,7 @@ Source of truth for architecture, lifecycle, recording targets, and implementati
 
 ## Project state
 
+- Each slice should be doable from a fresh session: read `DESIGN.md`, inspect relevant code/tests, then continue.
+- `DESIGN.md` must not grow; replace/trim stale text instead of appending.
 - Blank slate: private, unreleased, no production users/data.
 - Do not optimize for backward compatibility, migrations, or legacy support unless explicitly asked.
