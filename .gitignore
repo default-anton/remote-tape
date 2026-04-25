@@ -3,6 +3,9 @@
 /bin/
 /web/node_modules/
 /web/dist/
+!.envrc
+/internal/controlui/dist/*
+!/internal/controlui/dist/.gitkeep
 *.db
 *.db-shm
 *.db-wal

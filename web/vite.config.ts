@@ -9,8 +9,13 @@ function controlHistoryFallback(): Plugin {
     name: "remote-tape-control-history-fallback",
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        const url = req.url ?? "/";
-        if (url === "/" || url.startsWith("/sessions") || url.startsWith("/join/")) {
+        const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        const path = url.pathname;
+        const isControlAPI = path === "/api" || path.startsWith("/api/");
+        const isProxiedStatus = path === "/healthz" || path === "/readyz";
+        const isStaticAsset =
+          path.startsWith("/assets/") || path.startsWith("/favicon") || path.includes(".");
+        if (!isControlAPI && !isProxiedStatus && !isStaticAsset) {
           req.url = "/index.control.html";
         }
         next();
@@ -22,11 +27,12 @@ function controlHistoryFallback(): Plugin {
 export default defineConfig(({ mode }) => {
   const target = mode === "room" ? "room" : "control";
   const htmlFile = target === "room" ? "index.room.html" : "index.control.html";
+  const outDir = target === "control" ? "../internal/controlui/dist/control" : "dist/room";
 
   return {
     plugins: target === "control" ? [controlHistoryFallback(), react()] : [react()],
     build: {
-      outDir: `dist/${target}`,
+      outDir,
       emptyOutDir: true,
       rollupOptions: {
         input: {

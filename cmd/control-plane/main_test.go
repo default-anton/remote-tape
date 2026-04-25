@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/default-anton/remote-tape/internal/config"
 )
 
 func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
@@ -18,6 +21,28 @@ func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
 
 	if code := run(context.Background()); code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
+	}
+}
+
+func TestValidateControlUIRequiresConfiguredDiskOverride(t *testing.T) {
+	cfg := config.Config{}
+	cfg.General.ControlWebDistDir = t.TempDir()
+
+	if err := validateControlUI(cfg); err == nil {
+		t.Fatal("validateControlUI() error = nil")
+	}
+}
+
+func TestValidateControlUIAcceptsConfiguredDiskOverride(t *testing.T) {
+	distDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(distDir, "index.control.html"), []byte("<div id=\"root\"></div>"), 0o600); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	cfg := config.Config{}
+	cfg.General.ControlWebDistDir = distDir
+
+	if err := validateControlUI(cfg); err != nil {
+		t.Fatalf("validateControlUI() error = %v", err)
 	}
 }
 

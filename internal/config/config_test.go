@@ -22,7 +22,7 @@ func TestDefaultLoad(t *testing.T) {
 	if cfg.Security.AdminCookieSessionDuration != 7*24*time.Hour {
 		t.Fatalf("AdminCookieSessionDuration = %v", cfg.Security.AdminCookieSessionDuration)
 	}
-	if cfg.General.ControlWebDistDir != "./web/dist/control" {
+	if cfg.General.ControlWebDistDir != "" {
 		t.Fatalf("ControlWebDistDir = %q", cfg.General.ControlWebDistDir)
 	}
 }
@@ -78,7 +78,6 @@ func validConfig() Config {
 			Environment:        EnvironmentDevelopment,
 			HTTPAddr:           "127.0.0.1:8080",
 			DatabasePath:       "./data/control-plane.db",
-			ControlWebDistDir:  "./web/dist/control",
 			ControlPlaneURL:    "http://127.0.0.1:8080",
 			SessionsBaseDomain: "sessions.localhost",
 			LogLevel:           "info",

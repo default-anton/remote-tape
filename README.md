@@ -22,7 +22,7 @@ pnpm --dir web dev
 
 Open <http://127.0.0.1:5173/sessions>. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
 
-For Go-served static assets, build the frontend first. The control plane serves only `web/dist/control`; the room bundle is built separately under `web/dist/room` for session droplets.
+For the embedded control UI, build the frontend before building/running the Go binary. The control bundle is embedded from `internal/controlui/dist/control`; the room bundle is built separately under `web/dist/room` for session droplets.
 
 ```sh
 pnpm --dir web build
@@ -61,7 +61,7 @@ pnpm --dir web typecheck
 
 Key env groups match the future Settings UI:
 
-- General: `REMOTE_TAPE_ENV`, `REMOTE_TAPE_HTTP_ADDR`, `REMOTE_TAPE_DATABASE_PATH`, `REMOTE_TAPE_CONTROL_WEB_DIST_DIR`, `REMOTE_TAPE_CONTROL_PLANE_URL`, `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`
+- General: `REMOTE_TAPE_ENV`, `REMOTE_TAPE_HTTP_ADDR`, `REMOTE_TAPE_DATABASE_PATH`, `REMOTE_TAPE_CONTROL_PLANE_URL`, `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`, `REMOTE_TAPE_CONTROL_WEB_DIST_DIR` optional disk override for development/testing
 - Provisioning defaults: `REMOTE_TAPE_DEFAULT_DROPLET_SIZE`, `REMOTE_TAPE_DEFAULT_REGION`, `REMOTE_TAPE_IMAGE_ID`, `REMOTE_TAPE_HEALTH_CHECK_TIMEOUT`, `REMOTE_TAPE_FINALIZATION_TIMEOUT`
 - Security: `REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_MAX_ATTEMPTS`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW`, `REMOTE_TAPE_DIGITALOCEAN_API_TOKEN`, `REMOTE_TAPE_CLOUDFLARE_API_TOKEN`
 - Cleanup policies: `REMOTE_TAPE_ORPHANED_DROPLET_TTL`, `REMOTE_TAPE_COMPLETED_SESSION_TTL`, `REMOTE_TAPE_FAILED_SESSION_TTL`, `REMOTE_TAPE_LOGS_RETENTION`

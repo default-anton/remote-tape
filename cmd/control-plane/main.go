@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/default-anton/remote-tape/internal/config"
+	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
 	"github.com/default-anton/remote-tape/internal/server"
 )
@@ -32,6 +35,10 @@ func run(ctx context.Context) int {
 	}
 	logger = newLogger(cfg.General.LogLevel)
 	logger.InfoContext(ctx, "configuration loaded", cfg.LogAttrs()...)
+	if err := validateControlUI(cfg); err != nil {
+		logger.ErrorContext(ctx, "control UI unavailable", "error", err)
+		return 1
+	}
 
 	db, err := database.Open(ctx, cfg.General.DatabasePath)
 	if err != nil {
@@ -108,6 +115,20 @@ func run(ctx context.Context) int {
 		logger.InfoContext(ctx, "control plane stopped")
 		return 0
 	}
+}
+
+func validateControlUI(cfg config.Config) error {
+	if cfg.General.ControlWebDistDir != "" {
+		indexPath := filepath.Join(cfg.General.ControlWebDistDir, "index.control.html")
+		if _, err := os.Stat(indexPath); err != nil {
+			return fmt.Errorf("control UI disk override missing %s: %w", indexPath, err)
+		}
+		return nil
+	}
+	if cfg.General.Environment == config.EnvironmentProduction && !controlui.Built() {
+		return errors.New("embedded control UI is not built; run pnpm --dir web build:control before building the Go binary")
+	}
+	return nil
 }
 
 func newLogger(level string) *slog.Logger {

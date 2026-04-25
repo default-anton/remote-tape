@@ -210,30 +210,83 @@ where id = ?;
 }
 
 func TestControlAppServesBuiltIndex(t *testing.T) {
-	ctx := context.Background()
-	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile: "<div id=\"root\"></div>",
+	})
 	defer db.Close()
-	if _, err := database.Migrate(ctx, db, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
-		t.Fatalf("Migrate() error = %v", err)
-	}
-	distDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(distDir, controlIndexFile), []byte("<div id=\"root\"></div>"), 0o600); err != nil {
-		t.Fatalf("write index: %v", err)
-	}
-	handler := New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{ControlWebDistDir: distDir})
 
-	for _, path := range []string{"/", "/sessions", "/sessions/sess_123", "/join/joinable?token=token"} {
+	for _, path := range []string{"/", "/sessions", "/sessions/sess_123", "/join/joinable?token=token", "/settings"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
 			t.Fatalf("GET %s status = %d body = %s", path, response.Code, response.Body.String())
 		}
+		if response.Header().Get("Cache-Control") != "no-cache" {
+			t.Fatalf("GET %s Cache-Control = %q", path, response.Header().Get("Cache-Control"))
+		}
 		if !strings.Contains(response.Body.String(), "root") {
 			t.Fatalf("GET %s body = %s", path, response.Body.String())
 		}
+	}
+}
+
+func TestControlAppServesAssetsWithCacheHeaders(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile:       "<div id=\"root\"></div>",
+		"assets/app.123abc.js": "console.log('remote-tape')",
+		"favicon.ico":          "icon",
+	})
+	defer db.Close()
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/app.123abc.js", nil))
+	if asset.Code != http.StatusOK {
+		t.Fatalf("asset status = %d body = %s", asset.Code, asset.Body.String())
+	}
+	if asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset Cache-Control = %q", asset.Header().Get("Cache-Control"))
+	}
+
+	favicon := httptest.NewRecorder()
+	handler.ServeHTTP(favicon, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	if favicon.Code != http.StatusOK {
+		t.Fatalf("favicon status = %d body = %s", favicon.Code, favicon.Body.String())
+	}
+	if favicon.Header().Get("Cache-Control") != "public, max-age=3600" {
+		t.Fatalf("favicon Cache-Control = %q", favicon.Header().Get("Cache-Control"))
+	}
+}
+
+func TestControlAppDoesNotFallbackForAPIOrInvalidStaticPaths(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile: "<div id=\"root\"></div>",
+	})
+	defer db.Close()
+
+	api := httptest.NewRecorder()
+	handler.ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/unknown", nil))
+	if api.Code != http.StatusNotFound {
+		t.Fatalf("api status = %d body = %s", api.Code, api.Body.String())
+	}
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/%2e%2e/index.control.html", nil))
+	if asset.Code != http.StatusNotFound {
+		t.Fatalf("asset status = %d body = %s", asset.Code, asset.Body.String())
+	}
+}
+
+func TestControlAppReportsMissingBuild(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, nil)
+	defer db.Close()
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sessions", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "pnpm --dir web build:control") {
+		t.Fatalf("body = %s", response.Body.String())
 	}
 }
 
@@ -249,4 +302,30 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil))), db
+}
+
+func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.Handler, *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if _, err := database.Migrate(ctx, db, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		db.Close()
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	distDir := t.TempDir()
+	for name, content := range files {
+		filePath := filepath.Join(distDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
+			db.Close()
+			t.Fatalf("create asset directory: %v", err)
+		}
+		if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
+			db.Close()
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{ControlWebDistDir: distDir}), db
 }

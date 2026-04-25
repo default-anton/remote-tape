@@ -1,9 +1,10 @@
 package server
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
-	"os"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -15,44 +16,64 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isAPIPath(r.URL.Path) {
+		http.NotFound(w, r)
+		return
+	}
 	if isAssetPath(r.URL.Path) {
 		s.serveAsset(w, r)
 		return
 	}
-	if isControlAppRoute(r.URL.Path) {
-		s.serveControlIndex(w, r)
-		return
-	}
-	http.NotFound(w, r)
+	s.serveControlIndex(w, r)
 }
 
-func isAssetPath(path string) bool {
-	return strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/favicon") || filepath.Ext(path) != ""
+func isAssetPath(urlPath string) bool {
+	return strings.HasPrefix(urlPath, "/assets/") || strings.HasPrefix(urlPath, "/favicon") || path.Ext(urlPath) != ""
 }
 
-func isControlAppRoute(path string) bool {
-	return path == "/" || path == "/sessions" || strings.HasPrefix(path, "/sessions/") || strings.HasPrefix(path, "/join/")
+func isAPIPath(urlPath string) bool {
+	return urlPath == "/api" || strings.HasPrefix(urlPath, "/api/")
 }
 
 func (s *Server) serveControlIndex(w http.ResponseWriter, r *http.Request) {
-	indexPath := filepath.Join(s.options.ControlWebDistDir, controlIndexFile)
-	if _, err := os.Stat(indexPath); err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "control UI is not built; run pnpm --dir web build", http.StatusServiceUnavailable)
+	if _, err := fs.Stat(s.controlUI, controlIndexFile); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			http.Error(w, "control UI is not built; run pnpm --dir web build:control before building the Go binary", http.StatusServiceUnavailable)
 			return
 		}
 		http.Error(w, "control UI unavailable", http.StatusInternalServerError)
 		return
 	}
-	http.ServeFile(w, r, indexPath)
+	w.Header().Set("Cache-Control", "no-cache")
+	http.ServeFileFS(w, r, s.controlUI, controlIndexFile)
 }
 
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
-	cleanPath := strings.TrimPrefix(filepath.Clean("/"+r.URL.Path), string(filepath.Separator))
-	assetPath := filepath.Join(s.options.ControlWebDistDir, cleanPath)
-	if !strings.HasPrefix(assetPath, filepath.Clean(s.options.ControlWebDistDir)+string(filepath.Separator)) && filepath.Clean(assetPath) != filepath.Clean(s.options.ControlWebDistDir) {
+	assetPath, ok := staticFilePath(r.URL.Path)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, assetPath)
+	if _, err := fs.Stat(s.controlUI, assetPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "control UI asset unavailable", http.StatusInternalServerError)
+		return
+	}
+	if strings.HasPrefix(assetPath, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+	}
+	http.ServeFileFS(w, r, s.controlUI, assetPath)
+}
+
+func staticFilePath(urlPath string) (string, bool) {
+	assetPath := strings.TrimPrefix(urlPath, "/")
+	if !fs.ValidPath(assetPath) || assetPath == "." {
+		return "", false
+	}
+	return assetPath, isAssetPath("/" + assetPath)
 }

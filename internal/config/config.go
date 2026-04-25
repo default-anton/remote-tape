@@ -75,7 +75,7 @@ func Load() (Config, error) {
 			Environment:        getEnv("REMOTE_TAPE_ENV", EnvironmentDevelopment),
 			HTTPAddr:           getEnv("REMOTE_TAPE_HTTP_ADDR", "127.0.0.1:8080"),
 			DatabasePath:       getEnv("REMOTE_TAPE_DATABASE_PATH", "./data/control-plane.db"),
-			ControlWebDistDir:  getEnv("REMOTE_TAPE_CONTROL_WEB_DIST_DIR", "./web/dist/control"),
+			ControlWebDistDir:  strings.TrimSpace(os.Getenv("REMOTE_TAPE_CONTROL_WEB_DIST_DIR")),
 			ControlPlaneURL:    getEnv("REMOTE_TAPE_CONTROL_PLANE_URL", "http://127.0.0.1:8080"),
 			SessionsBaseDomain: getEnv("REMOTE_TAPE_SESSIONS_BASE_DOMAIN", "sessions.localhost"),
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
@@ -149,9 +149,6 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.General.DatabasePath) == "" {
 		errs = append(errs, errors.New("REMOTE_TAPE_DATABASE_PATH is required"))
-	}
-	if strings.TrimSpace(c.General.ControlWebDistDir) == "" {
-		errs = append(errs, errors.New("REMOTE_TAPE_CONTROL_WEB_DIST_DIR is required"))
 	}
 	if err := validateAbsoluteURL("REMOTE_TAPE_CONTROL_PLANE_URL", c.General.ControlPlaneURL); err != nil {
 		errs = append(errs, err)

@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
 	"github.com/default-anton/remote-tape/internal/session"
 )
@@ -29,6 +32,7 @@ type Server struct {
 	logger    *slog.Logger
 	startedAt time.Time
 	options   Options
+	controlUI fs.FS
 }
 
 func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
@@ -45,6 +49,7 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 		logger:    logger,
 		startedAt: time.Now().UTC(),
 		options:   opts,
+		controlUI: controlUIFS(opts),
 	}
 
 	mux := http.NewServeMux()
@@ -65,7 +70,6 @@ func defaultOptions() Options {
 		DefaultRegion:      "nyc3",
 		DefaultDropletSize: "s-2vcpu-2gb",
 		ImageID:            "ubuntu-24-04-x64",
-		ControlWebDistDir:  "web/dist/control",
 	}
 }
 
@@ -89,6 +93,13 @@ func mergeOptions(base Options, override Options) Options {
 		base.ControlWebDistDir = override.ControlWebDistDir
 	}
 	return base
+}
+
+func controlUIFS(opts Options) fs.FS {
+	if opts.ControlWebDistDir != "" {
+		return os.DirFS(opts.ControlWebDistDir)
+	}
+	return controlui.FS()
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

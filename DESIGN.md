@@ -653,7 +653,7 @@ This is much more valuable than premature metrics.
 
 Use one small TypeScript/React frontend codebase for both user-facing surfaces:
 
-1. **Control UI**: dashboard, session creation, session status, join-link waiting pages, and manual download confirmation. Served by the control-plane Go binary.
+1. **Control UI**: dashboard, session creation, session status, join-link waiting pages, and manual download confirmation. Built as static assets and embedded in the control-plane Go binary.
 2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session droplet. The room UI must not route recording media or chunk ingest through the control plane.
 
 Recommended layout:
@@ -665,12 +665,11 @@ web/
   tsconfig.json
   index.control.html
   index.room.html
-  dist/control/  # served by the control-plane Go binary
+  src/{control,room,shared}/
   dist/room/     # deployed to per-session droplets
-  src/
-    control/
-    room/
-    shared/
+internal/controlui/
+  embed.go
+  dist/control/  # embedded into the control-plane Go binary
 ```
 
 Vite builds two static entrypoints from one workspace into separate outputs. Keep shared UI/client utilities in `src/shared`; keep control-plane and room-specific code separate so architecture boundaries stay obvious.
