@@ -342,7 +342,7 @@ Use a prebuilt snapshot/image if possible.
 The session droplet should boot with:
 
 ```txt
-LiveKit 1.10.1
+LiveKit 1.11.0
 recording server
 room web app
 Caddy/Nginx
