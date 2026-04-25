@@ -133,13 +133,14 @@ create table if not exists schema_migrations (
 		return MigrationResult{}, fmt.Errorf("ensure schema_migrations table: %w", err)
 	}
 
+	appliedVersions, err := appliedMigrationVersions(ctx, db)
+	if err != nil {
+		return MigrationResult{}, err
+	}
+
 	result := MigrationResult{}
 	for _, migration := range Migrations {
-		applied, err := migrationApplied(ctx, db, migration.Version)
-		if err != nil {
-			return MigrationResult{}, err
-		}
-		if applied {
+		if appliedVersions[migration.Version] {
 			if migration.Version > result.Current {
 				result.Current = migration.Version
 			}
@@ -150,6 +151,7 @@ create table if not exists schema_migrations (
 		}
 		logger.InfoContext(ctx, "database migration applied", "version", migration.Version, "name", migration.Name)
 		result.Applied = append(result.Applied, migration)
+		appliedVersions[migration.Version] = true
 		if migration.Version > result.Current {
 			result.Current = migration.Version
 		}
@@ -157,16 +159,25 @@ create table if not exists schema_migrations (
 	return result, nil
 }
 
-func migrationApplied(ctx context.Context, db *sql.DB, version int) (bool, error) {
-	var exists int
-	err := db.QueryRowContext(ctx, `select 1 from schema_migrations where version = ?`, version).Scan(&exists)
-	if err == nil {
-		return true, nil
+func appliedMigrationVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
+	rows, err := db.QueryContext(ctx, `select version from schema_migrations`)
+	if err != nil {
+		return nil, fmt.Errorf("list applied migrations: %w", err)
 	}
-	if err == sql.ErrNoRows {
-		return false, nil
+	defer rows.Close()
+
+	versions := make(map[int]bool)
+	for rows.Next() {
+		var version int
+		if err := rows.Scan(&version); err != nil {
+			return nil, fmt.Errorf("scan applied migration: %w", err)
+		}
+		versions[version] = true
 	}
-	return false, fmt.Errorf("check migration %d: %w", version, err)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list applied migrations: %w", err)
+	}
+	return versions, nil
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, migration Migration) error {

@@ -105,6 +105,32 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigrateCurrentIgnoresUnknownAppliedMigration(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+
+	if _, err := Migrate(ctx, db, discardLogger()); err != nil {
+		t.Fatalf("first Migrate() error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+insert into schema_migrations(version, name, applied_at)
+values (999, 'future', datetime('now'));
+`); err != nil {
+		t.Fatalf("insert future migration: %v", err)
+	}
+
+	result, err := Migrate(ctx, db, discardLogger())
+	if err != nil {
+		t.Fatalf("second Migrate() error = %v", err)
+	}
+	if result.Current != 1 {
+		t.Fatalf("Current = %d", result.Current)
+	}
+	if len(result.Applied) != 0 {
+		t.Fatalf("Applied length = %d", len(result.Applied))
+	}
+}
+
 func openTestDB(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
 	db, err := Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
