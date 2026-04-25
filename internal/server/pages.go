@@ -11,8 +11,7 @@ const controlIndexFile = "index.control.html"
 
 func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
+		writeMethodNotAllowed(w, http.MethodGet, http.MethodHead)
 		return
 	}
 

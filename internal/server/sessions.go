@@ -56,14 +56,14 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		sessions, err := s.repo.ListSessions(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "list sessions", err)
+			writeOperationError(w, http.StatusInternalServerError, "list sessions", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
 	case http.MethodPost:
 		var req createSessionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "request body must be valid JSON"})
+			writeError(w, http.StatusBadRequest, "request body must be valid JSON")
 			return
 		}
 		result, err := s.createSession(r, req)
@@ -73,13 +73,12 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		detail, err := s.repo.GetSession(r.Context(), result.Session.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "load created session", err)
+			writeOperationError(w, http.StatusInternalServerError, "load created session", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, s.createResponse(result, detail.Events))
 	default:
-		w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodPost}, ", "))
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
+		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
 	}
 }
 
@@ -94,11 +93,11 @@ func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 	}
 	detail, err := s.repo.GetSession(r.Context(), id)
 	if errors.Is(err, session.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "session not found"})
+		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get session", err)
+		writeOperationError(w, http.StatusInternalServerError, "get session", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -115,11 +114,11 @@ func (s *Server) apiJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.repo.JoinSession(r.Context(), slug, r.URL.Query().Get("token"))
 	if errors.Is(err, session.ErrInvalidToken) {
-		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "join link not found"})
+		writeError(w, http.StatusNotFound, "join link not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "join session", err)
+		writeOperationError(w, http.StatusInternalServerError, "join session", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, joinResponse(result))
@@ -184,19 +183,10 @@ func (s *Server) joinURL(slug string, token string) string {
 func (s *Server) writeSessionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, session.ErrInvalidInput):
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrSlugConflicts):
-		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "session slug already exists"})
+		writeError(w, http.StatusConflict, "session slug already exists")
 	default:
-		writeError(w, http.StatusInternalServerError, "create session", err)
+		writeOperationError(w, http.StatusInternalServerError, "create session", err)
 	}
-}
-
-func writeError(w http.ResponseWriter, status int, operation string, err error) {
-	writeJSON(w, status, map[string]any{
-		"ok":        false,
-		"error":     operation + " failed",
-		"operation": operation,
-		"detail":    err.Error(),
-	})
 }

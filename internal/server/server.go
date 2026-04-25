@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/default-anton/remote-tape/internal/database"
@@ -139,12 +140,26 @@ func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
 	if r.Method == method {
 		return true
 	}
-	w.Header().Set("Allow", method)
-	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{
-		"ok":    false,
-		"error": "method not allowed",
-	})
+	writeMethodNotAllowed(w, method)
 	return false
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter, allowed ...string) {
+	w.Header().Set("Allow", strings.Join(allowed, ", "))
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]any{"ok": false, "error": message})
+}
+
+func writeOperationError(w http.ResponseWriter, status int, operation string, err error) {
+	writeJSON(w, status, map[string]any{
+		"ok":        false,
+		"error":     operation + " failed",
+		"operation": operation,
+		"detail":    err.Error(),
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
