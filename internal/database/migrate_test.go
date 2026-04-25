@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -131,7 +132,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestMigrateCurrentIgnoresUnknownAppliedMigration(t *testing.T) {
+func TestMigrateRejectsUnknownAppliedMigration(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
 
@@ -145,15 +146,66 @@ values (999, 'future', ?);
 		t.Fatalf("insert future migration: %v", err)
 	}
 
-	result, err := Migrate(ctx, db, discardLogger())
-	if err != nil {
+	_, err := Migrate(ctx, db, discardLogger())
+	if err == nil {
+		t.Fatal("second Migrate() error = nil, want unknown future migration error")
+	}
+	if !strings.Contains(err.Error(), "database schema version 999 is newer than this binary supports (1)") {
 		t.Fatalf("second Migrate() error = %v", err)
 	}
-	if result.Current != 1 {
-		t.Fatalf("Current = %d", result.Current)
+}
+
+func TestTimestampColumnsRejectNonFixedUTCText(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	if _, err := Migrate(ctx, db, discardLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
-	if len(result.Applied) != 0 {
-		t.Fatalf("Applied length = %d", len(result.Applied))
+
+	valid := formatSQLiteTime(time.Date(2026, 4, 24, 12, 34, 56, 123456789, time.FixedZone("PDT", -7*60*60)))
+	insertValidSession(t, db, valid)
+	insertValidSessionAccessToken(t, db, valid)
+	insertValidSessionEvent(t, db, valid)
+
+	columns := []struct {
+		table  string
+		column string
+		where  string
+	}{
+		{"sessions", "created_at", "id = 'session_1'"},
+		{"sessions", "updated_at", "id = 'session_1'"},
+		{"sessions", "ready_at", "id = 'session_1'"},
+		{"sessions", "active_at", "id = 'session_1'"},
+		{"sessions", "finalization_started_at", "id = 'session_1'"},
+		{"sessions", "finalized_at", "id = 'session_1'"},
+		{"sessions", "last_heartbeat_at", "id = 'session_1'"},
+		{"sessions", "download_confirmed_at", "id = 'session_1'"},
+		{"sessions", "ended_at", "id = 'session_1'"},
+		{"sessions", "expires_at", "id = 'session_1'"},
+		{"sessions", "last_error_at", "id = 'session_1'"},
+		{"session_access_tokens", "created_at", "id = 'token_1'"},
+		{"session_access_tokens", "last_used_at", "id = 'token_1'"},
+		{"session_access_tokens", "revoked_at", "id = 'token_1'"},
+		{"session_events", "created_at", "session_id = 'session_1'"},
+		{"schema_migrations", "applied_at", "version = 1"},
+	}
+	invalidValues := []string{
+		"not-a-time",
+		"2026-04-24T12:34:56.123Z",
+		"2026-04-24T12:34:56.123456789-07:00",
+		"2026-04-24 12:34:56.123456789Z",
+	}
+
+	for _, column := range columns {
+		statement := fmt.Sprintf("update %s set %s = ? where %s", column.table, column.column, column.where)
+		for _, invalid := range invalidValues {
+			if _, err := db.Exec(statement, invalid); err == nil {
+				t.Fatalf("update %s.%s to %q succeeded, want check constraint failure", column.table, column.column, invalid)
+			}
+		}
+		if _, err := db.Exec(statement, valid); err != nil {
+			t.Fatalf("update %s.%s to valid timestamp: %v", column.table, column.column, err)
+		}
 	}
 }
 
@@ -169,6 +221,46 @@ func openTestDB(t *testing.T, ctx context.Context) *sql.DB {
 		}
 	})
 	return db
+}
+
+func insertValidSession(t *testing.T, db *sql.DB, now string) {
+	t.Helper()
+	if _, err := db.Exec(`
+insert into sessions(
+  id,
+  slug,
+  title,
+  status,
+  machine_token_hash,
+  droplet_region,
+  droplet_size,
+  image_id,
+  created_at,
+  updated_at
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+`, "session_1", "session-1", "Session 1", "created", "machine_hash", "nyc3", "s-1vcpu-1gb", "image-1", now, now); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+}
+
+func insertValidSessionAccessToken(t *testing.T, db *sql.DB, now string) {
+	t.Helper()
+	if _, err := db.Exec(`
+insert into session_access_tokens(id, session_id, role, token_hash, created_at)
+values (?, ?, ?, ?, ?);
+`, "token_1", "session_1", "host", "token_hash", now); err != nil {
+		t.Fatalf("insert valid session access token: %v", err)
+	}
+}
+
+func insertValidSessionEvent(t *testing.T, db *sql.DB, now string) {
+	t.Helper()
+	if _, err := db.Exec(`
+insert into session_events(session_id, type, created_at)
+values (?, ?, ?);
+`, "session_1", "session.created", now); err != nil {
+		t.Fatalf("insert valid session event: %v", err)
+	}
 }
 
 func tableExists(t *testing.T, db *sql.DB, name string) bool {

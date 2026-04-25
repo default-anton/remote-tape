@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-const sqliteTimeFormat = "2006-01-02T15:04:05.000000000Z"
+const (
+	sqliteTimeFormat = "2006-01-02T15:04:05.000000000Z"
+	sqliteTimeGlob   = `[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]Z`
+)
 
 type Migration struct {
 	Version int
@@ -25,7 +28,7 @@ var Migrations = []Migration{
 	{
 		Version: 1,
 		Name:    "initial_control_plane_schema",
-		SQL: `
+		SQL: fmt.Sprintf(`
 create table sessions (
   id text primary key,
   slug text unique not null,
@@ -62,20 +65,20 @@ create table sessions (
   recording_download_url text,
   finalization_summary_json text,
 
-  created_at text not null,
-  updated_at text not null,
-  ready_at text,
-  active_at text,
-  finalization_started_at text,
-  finalized_at text,
-  last_heartbeat_at text,
-  download_confirmed_at text,
+  created_at text not null check (created_at glob '%[1]s'),
+  updated_at text not null check (updated_at glob '%[1]s'),
+  ready_at text check (ready_at glob '%[1]s'),
+  active_at text check (active_at glob '%[1]s'),
+  finalization_started_at text check (finalization_started_at glob '%[1]s'),
+  finalized_at text check (finalized_at glob '%[1]s'),
+  last_heartbeat_at text check (last_heartbeat_at glob '%[1]s'),
+  download_confirmed_at text check (download_confirmed_at glob '%[1]s'),
   download_confirmed_by text,
-  ended_at text,
-  expires_at text,
+  ended_at text check (ended_at glob '%[1]s'),
+  expires_at text check (expires_at glob '%[1]s'),
 
   last_error text,
-  last_error_at text,
+  last_error_at text check (last_error_at glob '%[1]s'),
   last_error_phase text,
 
   provision_attempts integer not null default 0,
@@ -90,9 +93,9 @@ create table session_access_tokens (
   role text not null check (role in ('host', 'guest')),
   label text,
   token_hash text not null unique,
-  created_at text not null,
-  last_used_at text,
-  revoked_at text,
+  created_at text not null check (created_at glob '%[1]s'),
+  last_used_at text check (last_used_at glob '%[1]s'),
+  revoked_at text check (revoked_at glob '%[1]s'),
 
   foreign key (session_id) references sessions(id)
 ) strict;
@@ -103,7 +106,7 @@ create table session_events (
   type text not null,
   message text,
   metadata_json text,
-  created_at text not null,
+  created_at text not null check (created_at glob '%[1]s'),
 
   foreign key (session_id) references sessions(id)
 ) strict;
@@ -118,7 +121,7 @@ create index idx_session_access_tokens_session_id
 
 create index idx_session_events_session_id_id
   on session_events(session_id, id);
-`,
+`, sqliteTimeGlob),
 	},
 }
 
@@ -126,19 +129,23 @@ func Migrate(ctx context.Context, db *sql.DB, logger *slog.Logger) (MigrationRes
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`
 create table if not exists schema_migrations (
   version integer primary key,
   name text not null,
-  applied_at text not null
+  applied_at text not null check (applied_at glob '%[1]s')
 ) strict;
-`); err != nil {
+`, sqliteTimeGlob)); err != nil {
 		return MigrationResult{}, fmt.Errorf("ensure schema_migrations table: %w", err)
 	}
 
-	appliedVersions, err := appliedMigrationVersions(ctx, db)
+	appliedVersions, maxAppliedVersion, err := appliedMigrationVersions(ctx, db)
 	if err != nil {
 		return MigrationResult{}, err
+	}
+	maxKnownVersion := maxKnownMigrationVersion()
+	if maxAppliedVersion > maxKnownVersion {
+		return MigrationResult{}, fmt.Errorf("database schema version %d is newer than this binary supports (%d)", maxAppliedVersion, maxKnownVersion)
 	}
 
 	result := MigrationResult{}
@@ -162,25 +169,39 @@ create table if not exists schema_migrations (
 	return result, nil
 }
 
-func appliedMigrationVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
+func appliedMigrationVersions(ctx context.Context, db *sql.DB) (map[int]bool, int, error) {
 	rows, err := db.QueryContext(ctx, `select version from schema_migrations`)
 	if err != nil {
-		return nil, fmt.Errorf("list applied migrations: %w", err)
+		return nil, 0, fmt.Errorf("list applied migrations: %w", err)
 	}
 	defer rows.Close()
 
 	versions := make(map[int]bool)
+	maxVersion := 0
 	for rows.Next() {
 		var version int
 		if err := rows.Scan(&version); err != nil {
-			return nil, fmt.Errorf("scan applied migration: %w", err)
+			return nil, 0, fmt.Errorf("scan applied migration: %w", err)
 		}
 		versions[version] = true
+		if version > maxVersion {
+			maxVersion = version
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list applied migrations: %w", err)
+		return nil, 0, fmt.Errorf("list applied migrations: %w", err)
 	}
-	return versions, nil
+	return versions, maxVersion, nil
+}
+
+func maxKnownMigrationVersion() int {
+	maxVersion := 0
+	for _, migration := range Migrations {
+		if migration.Version > maxVersion {
+			maxVersion = migration.Version
+		}
+	}
+	return maxVersion
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, migration Migration) error {

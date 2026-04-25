@@ -75,7 +75,7 @@ Use three control-plane tables at the start:
 
 Do not store recording chunks, media manifests, or upload state in the control-plane database. Those belong on the per-session droplet.
 
-Use SQLite `strict` tables and fixed-width UTC text timestamps: `2006-01-02T15:04:05.000000000Z`. This keeps values readable and lexically sortable.
+Use SQLite `strict` tables and enforce fixed-width UTC text timestamps with `check` constraints: `2006-01-02T15:04:05.000000000Z`. This keeps values readable and lexically sortable.
 
 ### `sessions`
 
