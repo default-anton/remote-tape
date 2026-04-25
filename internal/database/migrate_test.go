@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenAppliesSQLitePragmas(t *testing.T) {
@@ -64,7 +66,31 @@ func TestMigrateCreatesInitialSchema(t *testing.T) {
 		if !tableExists(t, db, table) {
 			t.Fatalf("table %q does not exist", table)
 		}
+		assertStrictTable(t, db, table)
 	}
+	for table, columns := range map[string][]string{
+		"sessions": {
+			"created_at",
+			"updated_at",
+			"ready_at",
+			"active_at",
+			"finalization_started_at",
+			"finalized_at",
+			"last_heartbeat_at",
+			"download_confirmed_at",
+			"ended_at",
+			"expires_at",
+			"last_error_at",
+		},
+		"session_access_tokens": {"created_at", "last_used_at", "revoked_at"},
+		"session_events":        {"created_at"},
+		"schema_migrations":     {"applied_at"},
+	} {
+		for _, column := range columns {
+			assertColumnType(t, db, table, column, "TEXT")
+		}
+	}
+	assertAppliedMigrationTimeFormat(t, db)
 	for _, index := range []string{
 		"idx_sessions_status",
 		"idx_sessions_updated_at",
@@ -114,8 +140,8 @@ func TestMigrateCurrentIgnoresUnknownAppliedMigration(t *testing.T) {
 	}
 	if _, err := db.ExecContext(ctx, `
 insert into schema_migrations(version, name, applied_at)
-values (999, 'future', datetime('now'));
-`); err != nil {
+values (999, 'future', ?);
+`, formatSQLiteTime(time.Now())); err != nil {
 		t.Fatalf("insert future migration: %v", err)
 	}
 
@@ -169,6 +195,42 @@ func indexExists(t *testing.T, db *sql.DB, name string) bool {
 		t.Fatalf("query index %q: %v", name, err)
 	}
 	return found == name
+}
+
+func assertStrictTable(t *testing.T, db *sql.DB, name string) {
+	t.Helper()
+	var strict int
+	if err := db.QueryRow(`select strict from pragma_table_list where name = ?`, name).Scan(&strict); err != nil {
+		t.Fatalf("query strict table %q: %v", name, err)
+	}
+	if strict != 1 {
+		t.Fatalf("table %q strict = %d, want 1", name, strict)
+	}
+}
+
+func assertColumnType(t *testing.T, db *sql.DB, table string, column string, want string) {
+	t.Helper()
+	var got string
+	if err := db.QueryRow(`select type from pragma_table_info(?) where name = ?`, table, column).Scan(&got); err != nil {
+		t.Fatalf("query column %q.%q: %v", table, column, err)
+	}
+	if !strings.EqualFold(got, want) {
+		t.Fatalf("column %q.%q type = %q, want %q", table, column, got, want)
+	}
+}
+
+func assertAppliedMigrationTimeFormat(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var appliedAt string
+	if err := db.QueryRow(`select applied_at from schema_migrations where version = 1`).Scan(&appliedAt); err != nil {
+		t.Fatalf("query applied migration time: %v", err)
+	}
+	if len(appliedAt) != len(formatSQLiteTime(time.Unix(0, 0))) {
+		t.Fatalf("applied_at length = %d for %q", len(appliedAt), appliedAt)
+	}
+	if _, err := time.Parse(sqliteTimeFormat, appliedAt); err != nil {
+		t.Fatalf("parse applied_at %q: %v", appliedAt, err)
+	}
 }
 
 func assertPragma(t *testing.T, db *sql.DB, name string, want string) {

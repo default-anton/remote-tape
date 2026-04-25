@@ -75,7 +75,7 @@ Use three control-plane tables at the start:
 
 Do not store recording chunks, media manifests, or upload state in the control-plane database. Those belong on the per-session droplet.
 
-Use UTC timestamps consistently. RFC3339 text is preferred for readability unless query-heavy time math proves otherwise.
+Use SQLite `strict` tables and fixed-width UTC text timestamps: `2006-01-02T15:04:05.000000000Z`. This keeps values readable and lexically sortable.
 
 ### `sessions`
 
@@ -116,20 +116,20 @@ sessions (
   recording_download_url text,
   finalization_summary_json text,
 
-  created_at datetime not null,
-  updated_at datetime not null,
-  ready_at datetime,
-  active_at datetime,
-  finalization_started_at datetime,
-  finalized_at datetime,
-  last_heartbeat_at datetime,
-  download_confirmed_at datetime,
+  created_at text not null,
+  updated_at text not null,
+  ready_at text,
+  active_at text,
+  finalization_started_at text,
+  finalized_at text,
+  last_heartbeat_at text,
+  download_confirmed_at text,
   download_confirmed_by text,
-  ended_at datetime,
-  expires_at datetime,
+  ended_at text,
+  expires_at text,
 
   last_error text,
-  last_error_at datetime,
+  last_error_at text,
   last_error_phase text,
 
   provision_attempts integer not null default 0,
@@ -152,9 +152,9 @@ session_access_tokens (
   role text not null check (role in ('host', 'guest')),
   label text,
   token_hash text not null unique,
-  created_at datetime not null,
-  last_used_at datetime,
-  revoked_at datetime,
+  created_at text not null,
+  last_used_at text,
+  revoked_at text,
 
   foreign key (session_id) references sessions(id)
 )
@@ -173,7 +173,7 @@ session_events (
   type text not null,
   message text,
   metadata_json text,
-  created_at datetime not null,
+  created_at text not null,
 
   foreign key (session_id) references sessions(id)
 )

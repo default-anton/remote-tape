@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"time"
 )
+
+const sqliteTimeFormat = "2006-01-02T15:04:05.000000000Z"
 
 type Migration struct {
 	Version int
@@ -59,27 +62,27 @@ create table sessions (
   recording_download_url text,
   finalization_summary_json text,
 
-  created_at datetime not null,
-  updated_at datetime not null,
-  ready_at datetime,
-  active_at datetime,
-  finalization_started_at datetime,
-  finalized_at datetime,
-  last_heartbeat_at datetime,
-  download_confirmed_at datetime,
+  created_at text not null,
+  updated_at text not null,
+  ready_at text,
+  active_at text,
+  finalization_started_at text,
+  finalized_at text,
+  last_heartbeat_at text,
+  download_confirmed_at text,
   download_confirmed_by text,
-  ended_at datetime,
-  expires_at datetime,
+  ended_at text,
+  expires_at text,
 
   last_error text,
-  last_error_at datetime,
+  last_error_at text,
   last_error_phase text,
 
   provision_attempts integer not null default 0,
   dns_attempts integer not null default 0,
   health_attempts integer not null default 0,
   teardown_attempts integer not null default 0
-);
+) strict;
 
 create table session_access_tokens (
   id text primary key,
@@ -87,12 +90,12 @@ create table session_access_tokens (
   role text not null check (role in ('host', 'guest')),
   label text,
   token_hash text not null unique,
-  created_at datetime not null,
-  last_used_at datetime,
-  revoked_at datetime,
+  created_at text not null,
+  last_used_at text,
+  revoked_at text,
 
   foreign key (session_id) references sessions(id)
-);
+) strict;
 
 create table session_events (
   id integer primary key autoincrement,
@@ -100,10 +103,10 @@ create table session_events (
   type text not null,
   message text,
   metadata_json text,
-  created_at datetime not null,
+  created_at text not null,
 
   foreign key (session_id) references sessions(id)
-);
+) strict;
 
 create index idx_sessions_status on sessions(status);
 create index idx_sessions_updated_at on sessions(updated_at);
@@ -127,8 +130,8 @@ func Migrate(ctx context.Context, db *sql.DB, logger *slog.Logger) (MigrationRes
 create table if not exists schema_migrations (
   version integer primary key,
   name text not null,
-  applied_at datetime not null
-);
+  applied_at text not null
+) strict;
 `); err != nil {
 		return MigrationResult{}, fmt.Errorf("ensure schema_migrations table: %w", err)
 	}
@@ -194,8 +197,8 @@ func applyMigration(ctx context.Context, db *sql.DB, migration Migration) error 
 	}
 	if _, err := tx.ExecContext(ctx, `
 insert into schema_migrations(version, name, applied_at)
-values (?, ?, datetime('now'));
-`, migration.Version, migration.Name); err != nil {
+values (?, ?, ?);
+`, migration.Version, migration.Name, formatSQLiteTime(time.Now())); err != nil {
 		return fmt.Errorf("record migration %d: %w", migration.Version, err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -210,4 +213,8 @@ func AppliedMigrationCount(ctx context.Context, db *sql.DB) (int, error) {
 		return 0, fmt.Errorf("count applied migrations: %w", err)
 	}
 	return count, nil
+}
+
+func formatSQLiteTime(t time.Time) string {
+	return t.UTC().Format(sqliteTimeFormat)
 }
