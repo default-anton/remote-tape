@@ -92,6 +92,7 @@ func TestMigrateCreatesInitialSchema(t *testing.T) {
 		}
 	}
 	assertAppliedMigrationTimeFormat(t, db)
+	assertColumnNullable(t, db, "sessions", "machine_token_hash")
 	for _, index := range []string{
 		"idx_sessions_status",
 		"idx_sessions_updated_at",
@@ -308,6 +309,17 @@ func assertColumnType(t *testing.T, db *sql.DB, table string, column string, wan
 	}
 	if !strings.EqualFold(got, want) {
 		t.Fatalf("column %q.%q type = %q, want %q", table, column, got, want)
+	}
+}
+
+func assertColumnNullable(t *testing.T, db *sql.DB, table string, column string) {
+	t.Helper()
+	var notNull int
+	if err := db.QueryRow(`select "notnull" from pragma_table_info(?) where name = ?`, table, column).Scan(&notNull); err != nil {
+		t.Fatalf("query column %q.%q nullability: %v", table, column, err)
+	}
+	if notNull != 0 {
+		t.Fatalf("column %q.%q notnull = %d, want nullable", table, column, notNull)
 	}
 }
 

@@ -50,7 +50,7 @@ create table sessions (
     )
   ),
 
-  machine_token_hash text not null,
+  machine_token_hash text,
 
   droplet_id text,
   droplet_ip text,

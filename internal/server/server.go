@@ -10,29 +10,84 @@ import (
 	"time"
 
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/session"
 )
+
+type Options struct {
+	ControlPlaneURL    string
+	SessionsBaseDomain string
+	DefaultRegion      string
+	DefaultDropletSize string
+	ImageID            string
+	ControlWebDistDir  string
+}
 
 type Server struct {
 	db        *sql.DB
+	repo      *session.Repository
 	logger    *slog.Logger
 	startedAt time.Time
+	options   Options
 }
 
-func New(db *sql.DB, logger *slog.Logger) http.Handler {
+func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	opts := defaultOptions()
+	if len(options) > 0 {
+		opts = mergeOptions(opts, options[0])
+	}
 	srv := &Server{
 		db:        db,
+		repo:      session.NewRepository(db),
 		logger:    logger,
 		startedAt: time.Now().UTC(),
+		options:   opts,
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", srv.app)
 	mux.HandleFunc("/healthz", srv.healthz)
 	mux.HandleFunc("/readyz", srv.readyz)
+	mux.HandleFunc("/api/sessions", srv.apiSessions)
+	mux.HandleFunc("/api/sessions/", srv.apiSession)
+	mux.HandleFunc("/api/join/", srv.apiJoin)
 
 	return requestLogger(logger, mux)
+}
+
+func defaultOptions() Options {
+	return Options{
+		ControlPlaneURL:    "http://127.0.0.1:8080",
+		SessionsBaseDomain: "sessions.localhost",
+		DefaultRegion:      "nyc3",
+		DefaultDropletSize: "s-2vcpu-2gb",
+		ImageID:            "ubuntu-24-04-x64",
+		ControlWebDistDir:  "web/dist/control",
+	}
+}
+
+func mergeOptions(base Options, override Options) Options {
+	if override.ControlPlaneURL != "" {
+		base.ControlPlaneURL = override.ControlPlaneURL
+	}
+	if override.SessionsBaseDomain != "" {
+		base.SessionsBaseDomain = override.SessionsBaseDomain
+	}
+	if override.DefaultRegion != "" {
+		base.DefaultRegion = override.DefaultRegion
+	}
+	if override.DefaultDropletSize != "" {
+		base.DefaultDropletSize = override.DefaultDropletSize
+	}
+	if override.ImageID != "" {
+		base.ImageID = override.ImageID
+	}
+	if override.ControlWebDistDir != "" {
+		base.ControlWebDistDir = override.ControlWebDistDir
+	}
+	return base
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

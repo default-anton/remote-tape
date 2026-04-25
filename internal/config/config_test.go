@@ -22,6 +22,9 @@ func TestDefaultLoad(t *testing.T) {
 	if cfg.Security.AdminCookieSessionDuration != 7*24*time.Hour {
 		t.Fatalf("AdminCookieSessionDuration = %v", cfg.Security.AdminCookieSessionDuration)
 	}
+	if cfg.General.ControlWebDistDir != "./web/dist/control" {
+		t.Fatalf("ControlWebDistDir = %q", cfg.General.ControlWebDistDir)
+	}
 }
 
 func TestProductionValidation(t *testing.T) {
@@ -42,6 +45,23 @@ func TestProductionValidation(t *testing.T) {
 	}
 }
 
+func TestDomainValidationRejectsInvalidDNSNames(t *testing.T) {
+	for _, domain := range []string{
+		strings.Repeat("a", 64) + ".example.com",
+		"-sessions.example.com",
+		"sessions-.example.com",
+		"sessions_remote.example.com",
+		strings.Repeat("a", 250) + ".com",
+	} {
+		cfg := validConfig()
+		cfg.General.SessionsBaseDomain = domain
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "REMOTE_TAPE_SESSIONS_BASE_DOMAIN") {
+			t.Fatalf("Validate() for %q error = %v", domain, err)
+		}
+	}
+}
+
 func TestDurationParsingSupportsDays(t *testing.T) {
 	duration, err := parseDuration("14d")
 	if err != nil {
@@ -58,6 +78,7 @@ func validConfig() Config {
 			Environment:        EnvironmentDevelopment,
 			HTTPAddr:           "127.0.0.1:8080",
 			DatabasePath:       "./data/control-plane.db",
+			ControlWebDistDir:  "./web/dist/control",
 			ControlPlaneURL:    "http://127.0.0.1:8080",
 			SessionsBaseDomain: "sessions.localhost",
 			LogLevel:           "info",
@@ -89,6 +110,7 @@ func clearEnv(t *testing.T) {
 		"REMOTE_TAPE_ENV",
 		"REMOTE_TAPE_HTTP_ADDR",
 		"REMOTE_TAPE_DATABASE_PATH",
+		"REMOTE_TAPE_CONTROL_WEB_DIST_DIR",
 		"REMOTE_TAPE_CONTROL_PLANE_URL",
 		"REMOTE_TAPE_SESSIONS_BASE_DOMAIN",
 		"REMOTE_TAPE_LOG_LEVEL",

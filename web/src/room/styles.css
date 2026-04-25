@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  --bg: #11171d;
+  --panel: #172028;
+  --line: #2d3a45;
+  --text: #edf0f2;
+  --muted: #a7b0ba;
+  --accent: #f4d7b0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    16px/1.5 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.room-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 32px;
+  place-items: center;
+}
+
+.room-card {
+  background: linear-gradient(180deg, var(--panel), #151d24);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  max-width: 760px;
+  padding: 28px;
+}
+
+.logo {
+  color: #fff;
+  font:
+    700 28px Georgia,
+    serif;
+}
+
+.tagline {
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+h1 {
+  font:
+    700 42px Georgia,
+    serif;
+  margin: 28px 0 8px;
+}
+
+p {
+  color: var(--muted);
+}

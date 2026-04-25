@@ -62,7 +62,14 @@ func run(ctx context.Context) int {
 	defer listener.Close()
 
 	httpServer := &http.Server{
-		Handler:           server.New(db, logger),
+		Handler: server.New(db, logger, server.Options{
+			ControlPlaneURL:    cfg.General.ControlPlaneURL,
+			SessionsBaseDomain: cfg.General.SessionsBaseDomain,
+			DefaultRegion:      cfg.Provisioning.DefaultRegion,
+			DefaultDropletSize: cfg.Provisioning.DefaultDropletSize,
+			ImageID:            cfg.Provisioning.ImageID,
+			ControlWebDistDir:  cfg.General.ControlWebDistDir,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

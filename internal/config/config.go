@@ -27,6 +27,7 @@ type GeneralSettings struct {
 	Environment        string
 	HTTPAddr           string
 	DatabasePath       string
+	ControlWebDistDir  string
 	ControlPlaneURL    string
 	SessionsBaseDomain string
 	LogLevel           string
@@ -74,6 +75,7 @@ func Load() (Config, error) {
 			Environment:        getEnv("REMOTE_TAPE_ENV", EnvironmentDevelopment),
 			HTTPAddr:           getEnv("REMOTE_TAPE_HTTP_ADDR", "127.0.0.1:8080"),
 			DatabasePath:       getEnv("REMOTE_TAPE_DATABASE_PATH", "./data/control-plane.db"),
+			ControlWebDistDir:  getEnv("REMOTE_TAPE_CONTROL_WEB_DIST_DIR", "./web/dist/control"),
 			ControlPlaneURL:    getEnv("REMOTE_TAPE_CONTROL_PLANE_URL", "http://127.0.0.1:8080"),
 			SessionsBaseDomain: getEnv("REMOTE_TAPE_SESSIONS_BASE_DOMAIN", "sessions.localhost"),
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
@@ -148,6 +150,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.General.DatabasePath) == "" {
 		errs = append(errs, errors.New("REMOTE_TAPE_DATABASE_PATH is required"))
 	}
+	if strings.TrimSpace(c.General.ControlWebDistDir) == "" {
+		errs = append(errs, errors.New("REMOTE_TAPE_CONTROL_WEB_DIST_DIR is required"))
+	}
 	if err := validateAbsoluteURL("REMOTE_TAPE_CONTROL_PLANE_URL", c.General.ControlPlaneURL); err != nil {
 		errs = append(errs, err)
 	}
@@ -212,6 +217,7 @@ func (c Config) LogAttrs() []any {
 		"environment", c.General.Environment,
 		"http_addr", c.General.HTTPAddr,
 		"database_path", c.General.DatabasePath,
+		"control_web_dist_dir", c.General.ControlWebDistDir,
 		"control_plane_url", c.General.ControlPlaneURL,
 		"sessions_base_domain", c.General.SessionsBaseDomain,
 		"default_droplet_size", c.Provisioning.DefaultDropletSize,
@@ -298,6 +304,26 @@ func validateDomain(name, domain string) error {
 	}
 	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
 		return fmt.Errorf("%s must not start or end with a dot", name)
+	}
+	if len(domain) > 253 {
+		return fmt.Errorf("%s must be 253 characters or fewer", name)
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if label == "" {
+			return fmt.Errorf("%s must not contain empty DNS labels", name)
+		}
+		if len(label) > 63 {
+			return fmt.Errorf("%s DNS labels must be 63 characters or fewer", name)
+		}
+		if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return fmt.Errorf("%s DNS labels must not start or end with a dash", name)
+		}
+		for _, r := range label {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+				continue
+			}
+			return fmt.Errorf("%s DNS labels may contain only letters, numbers, and dashes", name)
+		}
 	}
 	return nil
 }

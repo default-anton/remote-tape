@@ -1,0 +1,38 @@
+{
+  "name": "remote-tape-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --mode control",
+    "dev:room": "vite --host 127.0.0.1 --mode room",
+    "build": "pnpm run build:control && pnpm run build:room",
+    "build:control": "vite build --mode control",
+    "build:room": "vite build --mode room",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts index.control.html index.room.html src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.100.1",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "react-router": "7.14.2",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.1",
+    "jsdom": "29.0.2",
+    "msw": "2.13.6",
+    "oxfmt": "0.46.0",
+    "oxlint": "1.61.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.10",
+    "vitest": "4.1.5"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
