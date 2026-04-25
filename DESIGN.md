@@ -541,7 +541,7 @@ Need this from day one:
 4. Reconciler error messages persisted in DB
 5. “Adopted existing droplet” events
 
-Example debug page:
+Example debug page; align the degraded/attention state with [`docs/ui-reference/admin-diagnostics-degraded-and-attention.png`](docs/ui-reference/admin-diagnostics-degraded-and-attention.png):
 
 ```txt
 Session: sess_123
@@ -587,6 +587,26 @@ web/
 ```
 
 Vite builds two static entrypoints from one workspace. Keep shared UI/client utilities in `src/shared`; keep control-plane and room-specific code separate so architecture boundaries stay obvious.
+
+### UI reference artifacts
+
+Use the checked-in UI references as product direction for early screens and state coverage. They are references, not pixel-perfect contracts; preserve the operational clarity and state model over exact styling.
+
+Control UI references:
+
+- Sign-in: [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
+- Create session form: [`docs/ui-reference/admin-create-session-form-valid.png`](docs/ui-reference/admin-create-session-form-valid.png)
+- Sessions list across lifecycle states: [`docs/ui-reference/admin-sessions-list-mixed-states.png`](docs/ui-reference/admin-sessions-list-mixed-states.png)
+- Active healthy session detail: [`docs/ui-reference/admin-session-detail-active-healthy.png`](docs/ui-reference/admin-session-detail-active-healthy.png)
+- Awaiting manual download state: [`docs/ui-reference/admin-session-detail-awaiting-manual-download.png`](docs/ui-reference/admin-session-detail-awaiting-manual-download.png)
+- Diagnostics degraded/attention state: [`docs/ui-reference/admin-diagnostics-degraded-and-attention.png`](docs/ui-reference/admin-diagnostics-degraded-and-attention.png)
+- Settings for provisioning/security/cleanup: [`docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png`](docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png)
+
+Room/join references:
+
+- Provisioning/DNS waiting page: [`docs/ui-reference/room-join-provisioning-waiting-for-dns.png`](docs/ui-reference/room-join-provisioning-waiting-for-dns.png)
+- Provisioning failed/unavailable page: [`docs/ui-reference/room-session-unavailable-provisioning-failed.png`](docs/ui-reference/room-session-unavailable-provisioning-failed.png)
+- Ended session summary: [`docs/ui-reference/room-session-ended-summary.png`](docs/ui-reference/room-session-ended-summary.png)
 
 ### UI stack
 
@@ -659,7 +679,7 @@ Those may come later. Right now they slow us down and hide the important failure
 ### Slice 1: control plane skeleton
 
 - Go HTTP server
-- config/env validation
+- config/env validation; align future visible settings grouping with [`docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png`](docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png)
 - SQLite connection
 - migrations
 - health endpoints
@@ -675,10 +695,10 @@ Start control plane -> /healthz passes -> migrations create the database
 
 - `sessions` table
 - `session_events` table
-- session create/get
+- session create/get; align creation with [`docs/ui-reference/admin-create-session-form-valid.png`](docs/ui-reference/admin-create-session-form-valid.png) and the list state with [`docs/ui-reference/admin-sessions-list-mixed-states.png`](docs/ui-reference/admin-sessions-list-mixed-states.png)
 - append-only lifecycle events
-- join page placeholder
-- admin/debug session page with status, IDs, errors, and timeline
+- join page placeholder; use [`docs/ui-reference/room-join-provisioning-waiting-for-dns.png`](docs/ui-reference/room-join-provisioning-waiting-for-dns.png) for the waiting-state direction
+- admin/debug session page with status, IDs, errors, and timeline; align with [`docs/ui-reference/admin-session-detail-active-healthy.png`](docs/ui-reference/admin-session-detail-active-healthy.png)
 
 Demo:
 
@@ -688,7 +708,7 @@ Create session -> see session row and timeline -> open join link -> waiting page
 
 ### Slice 3: dashboard auth
 
-- `GET /login`
+- `GET /login`; align with [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
 - `POST /login`
 - `POST /logout`
 - single-admin cookie auth
@@ -769,9 +789,9 @@ Droplet boots -> calls authenticated ready callback -> control plane marks sessi
 ### Slice 8: join redirect flow
 
 - stable control-plane join links
-- waiting page while provisioning
-- useful failed page with host retry path
-- ended page
+- waiting page while provisioning; align with [`docs/ui-reference/room-join-provisioning-waiting-for-dns.png`](docs/ui-reference/room-join-provisioning-waiting-for-dns.png)
+- useful failed page with host retry path; align with [`docs/ui-reference/room-session-unavailable-provisioning-failed.png`](docs/ui-reference/room-session-unavailable-provisioning-failed.png)
+- ended page; align with [`docs/ui-reference/room-session-ended-summary.png`](docs/ui-reference/room-session-ended-summary.png)
 - redirect only when session is ready
 
 Demo:
@@ -786,7 +806,7 @@ Click join link -> wait while provisioning -> redirect when ready -> failed/ende
 - status moves to `finalizing`
 - session droplet finalizes recordings/manifests
 - authenticated finalized callback moves session to `awaiting_manual_download`
-- dashboard shows download instructions/links
+- dashboard shows download instructions/links; align with [`docs/ui-reference/admin-session-detail-awaiting-manual-download.png`](docs/ui-reference/admin-session-detail-awaiting-manual-download.png)
 - host/admin confirms download
 - confirmation moves session to `teardown_pending`
 
