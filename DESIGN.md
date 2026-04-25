@@ -766,10 +766,9 @@ Start control plane -> /healthz passes -> migrations create the database
 
 ### Slice 2: session model + event timeline
 
-- `sessions` table
-- `session_access_tokens` table
-- `session_events` table
-- session create/get, including title, slug, initial host/guest tokens, and hashed machine token; align creation with [`docs/ui-reference/admin-create-session-form-valid.png`](docs/ui-reference/admin-create-session-form-valid.png) and the list state with [`docs/ui-reference/admin-sessions-list-mixed-states.png`](docs/ui-reference/admin-sessions-list-mixed-states.png)
+Use the existing Slice 1 tables: `sessions`, `session_access_tokens`, and `session_events`.
+
+- session repository/API create/get, including title, slug, initial host/guest tokens, and hashed machine token; align creation with [`docs/ui-reference/admin-create-session-form-valid.png`](docs/ui-reference/admin-create-session-form-valid.png) and the list state with [`docs/ui-reference/admin-sessions-list-mixed-states.png`](docs/ui-reference/admin-sessions-list-mixed-states.png)
 - append-only lifecycle events
 - join page placeholder; use [`docs/ui-reference/room-join-provisioning-waiting-for-dns.png`](docs/ui-reference/room-join-provisioning-waiting-for-dns.png) for the waiting-state direction
 - admin/debug session page with status, IDs, errors, and timeline; align with [`docs/ui-reference/admin-session-detail-active-healthy.png`](docs/ui-reference/admin-session-detail-active-healthy.png)

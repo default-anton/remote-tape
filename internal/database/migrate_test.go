@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -17,6 +19,30 @@ func TestOpenAppliesSQLitePragmas(t *testing.T) {
 	assertPragma(t, db, "journal_mode", "wal")
 	assertPragma(t, db, "busy_timeout", "5000")
 	assertPragma(t, db, "synchronous", "1")
+}
+
+func TestOpenRestrictsDatabaseFilePermissions(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "data", "control-plane.db")
+	db, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := Migrate(ctx, db, discardLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	assertPerm(t, filepath.Dir(path), 0o700)
+	assertPerm(t, path, 0o600)
+	for _, candidate := range []string{path + "-wal", path + "-shm"} {
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			t.Fatalf("stat %q: %v", candidate, err)
+		}
+		assertPerm(t, candidate, 0o600)
+	}
 }
 
 func TestMigrateCreatesInitialSchema(t *testing.T) {
@@ -127,6 +153,17 @@ func assertPragma(t *testing.T, db *sql.DB, name string, want string) {
 	}
 	if got != want {
 		t.Fatalf("pragma %s = %q, want %q", name, got, want)
+	}
+}
+
+func assertPerm(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %q: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mode %q = %v, want %v", path, got, want)
 	}
 }
 
