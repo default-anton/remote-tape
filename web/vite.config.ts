@@ -14,7 +14,11 @@ function controlHistoryFallback(): Plugin {
         const isControlAPI = path === "/api" || path.startsWith("/api/");
         const isProxiedStatus = path === "/healthz" || path === "/readyz";
         const isStaticAsset =
-          path.startsWith("/assets/") || path.startsWith("/favicon") || path.includes(".");
+          path.startsWith("/@") ||
+          path.startsWith("/assets/") ||
+          path.startsWith("/src/") ||
+          path.startsWith("/favicon") ||
+          path.includes(".");
         if (!isControlAPI && !isProxiedStatus && !isStaticAsset) {
           req.url = "/index.control.html";
         }
@@ -28,9 +32,18 @@ export default defineConfig(({ mode }) => {
   const target = mode === "room" ? "room" : "control";
   const htmlFile = target === "room" ? "index.room.html" : "index.control.html";
   const outDir = target === "control" ? "../internal/controlui/dist/control" : "dist/room";
+  const proxy =
+    target === "control" && mode !== "mock"
+      ? {
+          "/api": "http://127.0.0.1:8080",
+          "/healthz": "http://127.0.0.1:8080",
+          "/readyz": "http://127.0.0.1:8080",
+        }
+      : undefined;
 
   return {
     plugins: target === "control" ? [controlHistoryFallback(), react()] : [react()],
+    publicDir: mode === "mock" ? "public" : false,
     build: {
       outDir,
       emptyOutDir: true,
@@ -42,14 +55,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: target === "room" ? 5174 : 5173,
-      proxy:
-        target === "control"
-          ? {
-              "/api": "http://127.0.0.1:8080",
-              "/healthz": "http://127.0.0.1:8080",
-              "/readyz": "http://127.0.0.1:8080",
-            }
-          : undefined,
+      proxy,
     },
     test: {
       environment: "jsdom",

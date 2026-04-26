@@ -1,100 +1,121 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { HttpResponse, http } from "msw";
+import { fireEvent, screen } from "@testing-library/react";
 import { setupServer } from "msw/node";
-import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { App } from "./App";
-import type { Session } from "./types";
+import { createControlMockApi } from "./testing/handlers";
+import { renderApp } from "./testing/renderApp";
 
-const session: Session = {
-  id: "sess_123",
-  slug: "joinable",
-  title: "Joinable",
-  status: "created",
-  droplet_id: null,
-  droplet_ip: null,
-  droplet_region: "nyc3",
-  droplet_size: "s-2vcpu-2gb",
-  image_id: "ubuntu-24-04-x64",
-  room_domain: "room-abc.sessions.localhost",
-  dns_record_id: null,
-  livekit_url: null,
-  recording_download_url: null,
-  finalization_summary_json: null,
-  created_at: "2026-04-25T10:00:00.000000000Z",
-  updated_at: "2026-04-25T10:00:00.000000000Z",
-  ready_at: null,
-  active_at: null,
-  finalization_started_at: null,
-  finalized_at: null,
-  last_heartbeat_at: null,
-  download_confirmed_at: null,
-  download_confirmed_by: null,
-  ended_at: null,
-  expires_at: null,
-  last_error: null,
-  last_error_at: null,
-  last_error_phase: null,
-  provision_attempts: 0,
-  dns_attempts: 0,
-  health_attempts: 0,
-  teardown_attempts: 0,
-};
-
-const server = setupServer(
-  http.get("/api/sessions", () => HttpResponse.json({ sessions: [session] })),
-  http.get("/api/join/:slug", ({ request, params }) => {
-    const url = new URL(request.url);
-    if (params.slug !== "joinable" || url.searchParams.get("token") !== "guest-token") {
-      return HttpResponse.json({ ok: false, error: "join link not found" }, { status: 404 });
-    }
-    return HttpResponse.json({
-      session: {
-        slug: session.slug,
-        title: session.title,
-        status: session.status,
-      },
-      token: {
-        role: "guest",
-      },
-    });
-  }),
-);
+const mockApi = createControlMockApi();
+const server = setupServer(...mockApi.handlers);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  mockApi.reset();
+  window.history.replaceState({}, "", "/");
+});
 afterAll(() => server.close());
 
 describe("control app", () => {
   it("renders sessions from the API", async () => {
-    renderApp("/sessions");
+    renderApp("/sessions?scenario=joinable");
 
     expect(await screen.findByRole("link", { name: "Joinable" })).toBeInTheDocument();
-    expect(screen.getByText("room-abc.sessions.localhost")).toBeInTheDocument();
+    expect(screen.getByText(/^room-[a-z2-7]{26}\.sessions\.localhost$/)).toBeInTheDocument();
   });
 
-  it("renders the join waiting state for a valid token", async () => {
-    renderApp("/join/joinable?token=guest-token");
+  it("keeps the selected mock scenario after navigating to session detail", async () => {
+    renderApp("/sessions?scenario=joinable");
+
+    const link = await screen.findByRole("link", { name: "Joinable" });
+    expect(link).toHaveAttribute("href", "/sessions/sess_joinable?scenario=joinable");
+    fireEvent.click(link);
+
+    expect(await screen.findByRole("heading", { name: "Joinable" })).toBeInTheDocument();
+    expect(screen.getByText("sess_joinable")).toBeInTheDocument();
+  });
+
+  it("serves the default mixed scenario join link", async () => {
+    const response = await fetch("/api/join/joinable?token=guest-token");
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects duplicate mock session slugs", async () => {
+    const response = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Joinable", slug: "joinable" }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "session slug already exists" });
+  });
+
+  it("renders the join waiting state for a valid guest token", async () => {
+    renderApp("/join/joinable?token=guest-token&scenario=provisioning");
 
     expect(await screen.findByText("Provisioning your room")).toBeInTheDocument();
     expect(screen.getByText("You're joining as")).toBeInTheDocument();
     expect(screen.getByText("guest")).toBeInTheDocument();
   });
-});
 
-function renderApp(path: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
+  it("renders the join waiting state for a valid host token", async () => {
+    renderApp("/join/joinable?token=host-token&scenario=waiting_for_dns");
+
+    expect(await screen.findByText("Provisioning your room")).toBeInTheDocument();
+    expect(screen.getByText("host")).toBeInTheDocument();
   });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-}
+
+  it("renders invalid join tokens from the API", async () => {
+    renderApp("/join/joinable?token=bad-token");
+
+    expect(await screen.findByText("join link not found")).toBeInTheDocument();
+  });
+
+  it("renders invalid join slugs from the API", async () => {
+    renderApp("/join/not-real?token=guest-token&scenario=provisioning");
+
+    expect(await screen.findByText("join link not found")).toBeInTheDocument();
+  });
+
+  it("renders the detail page after creating a session in the mock API", async () => {
+    renderApp("/sessions");
+
+    fireEvent.change(await screen.findByLabelText("Session title"), {
+      target: { value: "New Mock Session" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
+
+    expect(await screen.findByRole("heading", { name: "New Mock Session" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^https?:\/\/[^/]+\/join\/new-mock-session\?token=new-mock-session-host-token$/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^https?:\/\/[^/]+\/join\/new-mock-session\?token=new-mock-session-guest-token$/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("scopes mock join tokens to the created session", async () => {
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Scoped Token" }),
+    });
+
+    const wrongToken = await fetch("/api/join/scoped-token?token=guest-token");
+    expect(wrongToken.status).toBe(404);
+
+    const scopedToken = await fetch("/api/join/scoped-token?token=scoped-token-guest-token");
+    expect(scopedToken.status).toBe(200);
+  });
+
+  it("renders missing join tokens without calling the API", async () => {
+    renderApp("/join/joinable");
+
+    expect(screen.getByText("Join link is missing its token.")).toBeInTheDocument();
+  });
+});

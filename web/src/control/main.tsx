@@ -18,13 +18,23 @@ const root = document.getElementById("root");
 if (!root) {
   throw new Error("missing root element");
 }
+const container = root;
 
-createRoot(root).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+async function bootstrap() {
+  if (import.meta.env.MODE === "mock") {
+    const { startControlMocks } = await import("./testing/browser");
+    await startControlMocks();
+  }
+
+  createRoot(container).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+}
+
+void bootstrap();

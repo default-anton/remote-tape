@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --mode control",
+    "dev:mock": "vite --host 127.0.0.1 --mode mock",
     "dev:room": "vite --host 127.0.0.1 --mode room",
     "build": "pnpm run build:control && pnpm run build:room",
     "build:control": "vite build --mode control",

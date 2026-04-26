@@ -26,6 +26,7 @@ export function App() {
 }
 
 function SessionsPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: listSessions });
@@ -33,7 +34,10 @@ function SessionsPage() {
     mutationFn: createSession,
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      navigate(`/sessions/${created.session.id}`, { state: { created } });
+      navigate(
+        { pathname: `/sessions/${created.session.id}`, search: location.search },
+        { state: { created } },
+      );
     },
   });
 
@@ -112,6 +116,7 @@ function Stat({ label, value, hint }: { label: string; value: number; hint: stri
 }
 
 function SessionTable({ sessions }: { sessions: Session[] }) {
+  const location = useLocation();
   if (sessions.length === 0) {
     return <p className="muted">No sessions yet. Create one to get host and guest join links.</p>;
   }
@@ -130,7 +135,9 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
         {sessions.map((session) => (
           <tr key={session.id}>
             <td>
-              <Link to={`/sessions/${session.id}`}>{session.title}</Link>
+              <Link to={{ pathname: `/sessions/${session.id}`, search: location.search }}>
+                {session.title}
+              </Link>
               <br />
               <span className="muted">{session.id}</span>
             </td>
@@ -231,7 +238,7 @@ function SessionDetailPage() {
   return (
     <Shell active="sessions">
       <p>
-        <Link to="/sessions">← Back to sessions</Link>
+        <Link to={{ pathname: "/sessions", search: location.search }}>← Back to sessions</Link>
       </p>
       {detail.isLoading ? <p className="muted">Loading session…</p> : null}
       {detail.isError ? <Alert>{messageFromError(detail.error)}</Alert> : null}
