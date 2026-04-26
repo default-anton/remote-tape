@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -23,7 +22,7 @@ type Options struct {
 	DefaultRegion      string
 	DefaultDropletSize string
 	ImageID            string
-	ControlWebDistDir  string
+	controlUIFS        fs.FS
 }
 
 type Server struct {
@@ -89,15 +88,15 @@ func mergeOptions(base Options, override Options) Options {
 	if override.ImageID != "" {
 		base.ImageID = override.ImageID
 	}
-	if override.ControlWebDistDir != "" {
-		base.ControlWebDistDir = override.ControlWebDistDir
+	if override.controlUIFS != nil {
+		base.controlUIFS = override.controlUIFS
 	}
 	return base
 }
 
 func controlUIFS(opts Options) fs.FS {
-	if opts.ControlWebDistDir != "" {
-		return os.DirFS(opts.ControlWebDistDir)
+	if opts.controlUIFS != nil {
+		return opts.controlUIFS
 	}
 	return controlui.FS()
 }

@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"net"
-	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/default-anton/remote-tape/internal/config"
 )
 
 func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
@@ -24,35 +21,12 @@ func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
 	}
 }
 
-func TestValidateControlUIRequiresConfiguredDiskOverride(t *testing.T) {
-	cfg := config.Config{}
-	cfg.General.ControlWebDistDir = t.TempDir()
-
-	if err := validateControlUI(cfg); err == nil {
-		t.Fatal("validateControlUI() error = nil")
-	}
-}
-
-func TestValidateControlUIAcceptsConfiguredDiskOverride(t *testing.T) {
-	distDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(distDir, "index.control.html"), []byte("<div id=\"root\"></div>"), 0o600); err != nil {
-		t.Fatalf("write index: %v", err)
-	}
-	cfg := config.Config{}
-	cfg.General.ControlWebDistDir = distDir
-
-	if err := validateControlUI(cfg); err != nil {
-		t.Fatalf("validateControlUI() error = %v", err)
-	}
-}
-
 func setRunTestEnv(t *testing.T, httpAddr string, databasePath string) {
 	t.Helper()
 	for _, name := range []string{
 		"REMOTE_TAPE_ENV",
 		"REMOTE_TAPE_HTTP_ADDR",
 		"REMOTE_TAPE_DATABASE_PATH",
-		"REMOTE_TAPE_CONTROL_WEB_DIST_DIR",
 		"REMOTE_TAPE_CONTROL_PLANE_URL",
 		"REMOTE_TAPE_SESSIONS_BASE_DOMAIN",
 		"REMOTE_TAPE_LOG_LEVEL",

@@ -27,7 +27,6 @@ type GeneralSettings struct {
 	Environment        string
 	HTTPAddr           string
 	DatabasePath       string
-	ControlWebDistDir  string
 	ControlPlaneURL    string
 	SessionsBaseDomain string
 	LogLevel           string
@@ -75,7 +74,6 @@ func Load() (Config, error) {
 			Environment:        getEnv("REMOTE_TAPE_ENV", EnvironmentDevelopment),
 			HTTPAddr:           getEnv("REMOTE_TAPE_HTTP_ADDR", "127.0.0.1:8080"),
 			DatabasePath:       getEnv("REMOTE_TAPE_DATABASE_PATH", "./data/control-plane.db"),
-			ControlWebDistDir:  strings.TrimSpace(os.Getenv("REMOTE_TAPE_CONTROL_WEB_DIST_DIR")),
 			ControlPlaneURL:    getEnv("REMOTE_TAPE_CONTROL_PLANE_URL", "http://127.0.0.1:8080"),
 			SessionsBaseDomain: getEnv("REMOTE_TAPE_SESSIONS_BASE_DOMAIN", "sessions.localhost"),
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
@@ -214,7 +212,6 @@ func (c Config) LogAttrs() []any {
 		"environment", c.General.Environment,
 		"http_addr", c.General.HTTPAddr,
 		"database_path", c.General.DatabasePath,
-		"control_web_dist_dir", c.General.ControlWebDistDir,
 		"control_plane_url", c.General.ControlPlaneURL,
 		"sessions_base_domain", c.General.SessionsBaseDomain,
 		"default_droplet_size", c.Provisioning.DefaultDropletSize,

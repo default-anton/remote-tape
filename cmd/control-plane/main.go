@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -75,7 +73,6 @@ func run(ctx context.Context) int {
 			DefaultRegion:      cfg.Provisioning.DefaultRegion,
 			DefaultDropletSize: cfg.Provisioning.DefaultDropletSize,
 			ImageID:            cfg.Provisioning.ImageID,
-			ControlWebDistDir:  cfg.General.ControlWebDistDir,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -118,13 +115,6 @@ func run(ctx context.Context) int {
 }
 
 func validateControlUI(cfg config.Config) error {
-	if cfg.General.ControlWebDistDir != "" {
-		indexPath := filepath.Join(cfg.General.ControlWebDistDir, "index.control.html")
-		if _, err := os.Stat(indexPath); err != nil {
-			return fmt.Errorf("control UI disk override missing %s: %w", indexPath, err)
-		}
-		return nil
-	}
 	if cfg.General.Environment == config.EnvironmentProduction && !controlui.Built() {
 		return errors.New("embedded control UI is not built; run pnpm --dir web build:control before building the Go binary")
 	}

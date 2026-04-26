@@ -9,10 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/default-anton/remote-tape/internal/database"
 )
@@ -315,17 +315,9 @@ func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	distDir := t.TempDir()
+	controlUI := fstest.MapFS{}
 	for name, content := range files {
-		filePath := filepath.Join(distDir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
-			db.Close()
-			t.Fatalf("create asset directory: %v", err)
-		}
-		if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
-			db.Close()
-			t.Fatalf("write %s: %v", name, err)
-		}
+		controlUI[name] = &fstest.MapFile{Data: []byte(content)}
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{ControlWebDistDir: distDir}), db
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{controlUIFS: controlUI}), db
 }

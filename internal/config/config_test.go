@@ -22,9 +22,6 @@ func TestDefaultLoad(t *testing.T) {
 	if cfg.Security.AdminCookieSessionDuration != 7*24*time.Hour {
 		t.Fatalf("AdminCookieSessionDuration = %v", cfg.Security.AdminCookieSessionDuration)
 	}
-	if cfg.General.ControlWebDistDir != "" {
-		t.Fatalf("ControlWebDistDir = %q", cfg.General.ControlWebDistDir)
-	}
 }
 
 func TestProductionValidation(t *testing.T) {
@@ -109,7 +106,6 @@ func clearEnv(t *testing.T) {
 		"REMOTE_TAPE_ENV",
 		"REMOTE_TAPE_HTTP_ADDR",
 		"REMOTE_TAPE_DATABASE_PATH",
-		"REMOTE_TAPE_CONTROL_WEB_DIST_DIR",
 		"REMOTE_TAPE_CONTROL_PLANE_URL",
 		"REMOTE_TAPE_SESSIONS_BASE_DOMAIN",
 		"REMOTE_TAPE_LOG_LEVEL",
