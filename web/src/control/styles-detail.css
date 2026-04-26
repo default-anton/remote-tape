@@ -1,0 +1,483 @@
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.detail-head h1 {
+  display: inline;
+  margin-right: 12px;
+}
+.detail-head p {
+  margin: 8px 0 0;
+}
+.info-grid {
+  display: grid;
+  gap: 22px 70px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 14px;
+  padding: 19px;
+}
+.info-label {
+  color: var(--muted);
+  display: block;
+  font-weight: 750;
+  margin-bottom: 3px;
+}
+.info-grid p {
+  margin: 0;
+}
+.info-grid small {
+  color: var(--muted);
+  display: block;
+}
+.healthy {
+  color: var(--green);
+  display: block;
+  font-size: 18px;
+}
+.lifecycle {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  margin-bottom: 14px;
+  padding: 22px 32px 18px;
+}
+.life-step {
+  color: var(--muted);
+  position: relative;
+  text-align: center;
+}
+.life-step::before {
+  background: #65707a;
+  content: "";
+  height: 2px;
+  left: -50%;
+  position: absolute;
+  top: 14px;
+  width: 100%;
+  z-index: 0;
+}
+.life-step:first-child::before {
+  display: none;
+}
+.life-step.done::before,
+.life-step.current::before {
+  background: var(--green);
+}
+.life-step span {
+  align-items: center;
+  background: #172027;
+  border: 2px solid #65707a;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  margin-bottom: 8px;
+  position: relative;
+  width: 30px;
+  z-index: 1;
+}
+.life-step.done span {
+  border-color: var(--green);
+  color: var(--green);
+}
+.life-step.current span {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.life-step strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.life-step small {
+  display: block;
+}
+.detail-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 407px;
+}
+.join-links {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 16px;
+}
+.join-links div {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 120px 1fr 88px;
+}
+code {
+  background: #121a20;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--body);
+  padding: 7px 9px;
+  word-break: break-all;
+}
+.events-card {
+  padding: 18px;
+}
+.section-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.events-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.events-card li {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 82px 14px 180px 1fr 90px;
+  min-height: 28px;
+}
+.events-card time {
+  color: var(--muted);
+}
+.event-line {
+  background: var(--line);
+  border-radius: 50%;
+  height: 7px;
+  position: relative;
+  width: 7px;
+}
+.events-card p {
+  color: var(--muted);
+  margin: 0;
+}
+.load-more {
+  display: flex;
+  margin: 34px auto 22px;
+  min-width: 190px;
+}
+.diagnostic-stack {
+  display: grid;
+  gap: 12px;
+}
+.health-card {
+  padding: 16px;
+}
+.health-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.health-head h2 {
+  align-items: center;
+  display: flex;
+  font-size: 18px;
+  gap: 10px;
+  margin: 0;
+}
+.health-head b {
+  color: var(--green);
+  font-size: 13px;
+}
+.health-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  margin: 8px 0;
+}
+.health-row span {
+  color: var(--muted);
+}
+.meter {
+  background: #3a444d;
+  border-radius: 999px;
+  height: 6px;
+  margin: 6px 0;
+  overflow: hidden;
+}
+.meter span {
+  background: var(--green);
+  display: block;
+  height: 100%;
+  width: 23%;
+}
+.links {
+  display: grid;
+  gap: 10px;
+}
+.linkbox {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 80px 1fr;
+}
+.attention {
+  background: #2d2317;
+  border-color: #6b481d;
+  padding: 18px;
+}
+.error {
+  background: #321d1d;
+  border-color: #7a3434;
+  color: #ffd0d0;
+  margin-bottom: 14px;
+  padding: 18px;
+}
+
+.join {
+  display: grid;
+  min-height: 100vh;
+  padding: 78px 32px;
+  place-items: center;
+}
+.join-card {
+  max-width: 1128px;
+  padding: 29px 68px 28px;
+  text-align: center;
+  width: 100%;
+}
+.join-card h1 {
+  font-size: 48px;
+  margin-bottom: 19px;
+}
+.join-lead {
+  font-size: 18px;
+  margin: 17px 0 34px;
+}
+.join-steps {
+  background: #1a232a;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin-bottom: 31px;
+  padding: 30px;
+}
+.join-steps div {
+  position: relative;
+}
+.join-steps div + div::before {
+  background: #68727c;
+  content: "";
+  height: 2px;
+  left: -40%;
+  position: absolute;
+  top: 22px;
+  width: 80%;
+}
+.join-steps .done + div::before,
+.join-steps div.done::before {
+  background: var(--green);
+}
+.join-steps span {
+  align-items: center;
+  border: 2px solid #69737d;
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 22px;
+  height: 44px;
+  justify-content: center;
+  margin-bottom: 14px;
+  width: 44px;
+}
+.join-steps .done span {
+  border-color: var(--green);
+  color: var(--green);
+}
+.join-steps .active span {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.join-steps strong {
+  display: block;
+  font-size: 17px;
+}
+.join-steps small {
+  color: var(--muted);
+  display: block;
+  font-size: 15px;
+  margin-top: 7px;
+}
+.join-steps .done small {
+  color: var(--green);
+}
+.join-steps .active small {
+  color: var(--orange);
+}
+.spinner {
+  animation: spin 1s linear infinite;
+  border: 5px dotted var(--orange);
+  border-radius: 50%;
+  height: 44px;
+  margin: 0 auto 18px;
+  width: 44px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.waiting h2 {
+  color: var(--text);
+  font-size: 18px;
+  margin: 0 0 2px;
+}
+.join-meta {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 31px auto 18px;
+  max-width: 485px;
+  overflow: hidden;
+  text-align: left;
+}
+.join-meta div {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 46px 1fr;
+  padding: 18px 24px;
+}
+.join-meta div + div {
+  border-top: 1px solid var(--line-soft);
+}
+.join-meta p {
+  margin: 0;
+}
+.join-meta small {
+  color: var(--muted);
+  display: block;
+}
+.join-meta strong {
+  color: var(--text);
+  display: block;
+  font-size: 17px;
+}
+.info-note {
+  background: #1e2830;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  color: var(--muted);
+  margin: 0 auto;
+  max-width: 485px;
+  padding: 16px;
+}
+
+.login-page {
+  display: grid;
+  grid-template-columns: 42% 58%;
+  min-height: 100vh;
+}
+.login-brand {
+  border-right: 1px solid var(--line);
+  padding: 180px 118px 56px;
+  position: relative;
+}
+.login-brand h1 {
+  font-size: 34px;
+  line-height: 1.25;
+  margin-bottom: 44px;
+}
+.login-brand h1 span {
+  color: var(--accent-2);
+}
+.login-brand ul {
+  border-top: 1px solid var(--line-soft);
+  display: grid;
+  gap: 28px;
+  list-style: none;
+  padding: 28px 0 0;
+}
+.login-brand li {
+  color: var(--text);
+  display: grid;
+  gap: 3px;
+  padding-left: 66px;
+  position: relative;
+}
+.login-brand li::before {
+  align-items: center;
+  background: #1c2d20;
+  border-radius: 50%;
+  color: var(--green);
+  content: "◇";
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 48px;
+}
+.login-brand small {
+  color: var(--muted);
+}
+.login-card {
+  align-self: center;
+  justify-self: center;
+  max-width: 526px;
+  padding: 44px 52px 48px;
+  text-align: center;
+  width: 100%;
+}
+.lock {
+  align-items: center;
+  background: #2b261c;
+  border: 1px solid #6c4d26;
+  border-radius: 50%;
+  color: var(--accent);
+  display: flex;
+  height: 64px;
+  justify-content: center;
+  margin: 0 auto 34px;
+  width: 64px;
+}
+.login-card label {
+  margin-top: 28px;
+  text-align: left;
+}
+.login-card input {
+  margin-top: 10px;
+  padding: 16px;
+}
+.login-card button {
+  font-size: 17px;
+  margin: 30px 0 22px;
+  min-height: 58px;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+  .main {
+    padding: 24px;
+  }
+  .stats,
+  .create-grid,
+  .detail-grid,
+  .info-grid,
+  .toolbar {
+    grid-template-columns: 1fr;
+    transform: none;
+    margin-bottom: 14px;
+  }
+  .lifecycle,
+  .join-steps {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .life-step::before,
+  .join-steps div + div::before {
+    display: none;
+  }
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+  .login-brand {
+    display: none;
+  }
+}

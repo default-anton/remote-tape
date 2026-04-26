@@ -31,7 +31,7 @@ describe("control app", () => {
     fireEvent.click(link);
 
     expect(await screen.findByRole("heading", { name: "Joinable" })).toBeInTheDocument();
-    expect(screen.getByText("sess_joinable")).toBeInTheDocument();
+    expect(screen.getAllByText("sess_joinable").length).toBeGreaterThan(0);
   });
 
   it("serves the default mixed scenario join link", async () => {
@@ -79,7 +79,7 @@ describe("control app", () => {
   });
 
   it("renders the detail page after creating a session in the mock API", async () => {
-    renderApp("/sessions");
+    renderApp("/sessions/new");
 
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "New Mock Session" },
@@ -88,15 +88,15 @@ describe("control app", () => {
 
     expect(await screen.findByRole("heading", { name: "New Mock Session" })).toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.getAllByText(
         /^https?:\/\/[^/]+\/join\/new-mock-session\?token=new-mock-session-host-token$/,
-      ),
-    ).toBeInTheDocument();
+      ).length,
+    ).toBeGreaterThan(0);
     expect(
-      screen.getByText(
+      screen.getAllByText(
         /^https?:\/\/[^/]+\/join\/new-mock-session\?token=new-mock-session-guest-token$/,
-      ),
-    ).toBeInTheDocument();
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("scopes mock join tokens to the created session", async () => {

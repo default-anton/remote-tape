@@ -126,12 +126,97 @@ export function detailForSession(session: Session): Detail {
 }
 
 function mixedScenario(): ControlScenario {
-  const joinable = makeSession({ id: "sess_joinable", slug: "joinable", title: "Joinable" });
-  return {
-    name: "mixed",
-    sessions: [joinable, ...lifecycleStatuses.map(makeLifecycleSession)],
-    joinSlug: joinable.slug,
-  };
+  const rows: Array<Partial<Session> & { status: SessionStatus }> = [
+    {
+      id: "sess_01HZXJ7K9Q13XW9YA4B87C5",
+      slug: "joinable",
+      title: "The Infra Podcast #312",
+      status: "provisioning",
+      droplet_region: "us-east-1",
+      room_domain: "theinfra.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZX6F8T2P5Q7R1V0D96F3",
+      slug: "product-builders-live",
+      title: "Product Builders Live",
+      status: "waiting_for_dns",
+      droplet_region: "us-west-2",
+      room_domain: "pblive.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZX4M1B6N8D2C3V7E5F9A1",
+      slug: "syntax-fm-recording",
+      title: "Syntax.fm – Recording",
+      status: "ready",
+      droplet_region: "us-east-1",
+      room_domain: "syntax.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZX2Y9Y3K6L8M0N4Q1W2E7",
+      slug: "founders-unplugged",
+      title: "Founders Unplugged",
+      status: "active",
+      droplet_region: "eu-central-1",
+      room_domain: "founders.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZWZ8J1R4T6V3B9N0C2D5E",
+      slug: "devrel-show",
+      title: "The DevRel Show",
+      status: "finalizing",
+      droplet_region: "us-west-2",
+      room_domain: "devrel.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZWX0Y6P2D4F8G1H7J9K3L",
+      slug: "ai-and-coffee",
+      title: "AI & Coffee",
+      status: "awaiting_manual_download",
+      droplet_region: "us-east-1",
+      room_domain: "aiandcoffee.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZWV7E0M5C9B2N6R3T8Y1U",
+      slug: "open-source-today",
+      title: "Open Source Today",
+      status: "teardown_pending",
+      droplet_region: "eu-west-1",
+      room_domain: "oss.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZWQ3PBV4K2M6N9D1E5F7G",
+      slug: "latent-space",
+      title: "Latent Space",
+      status: "ended",
+      droplet_region: "us-west-2",
+      room_domain: "latent.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZWJ2H9L6B7V3C1X4Z8A5S",
+      slug: "marketing-trends-podcast",
+      title: "Marketing Trends Podcast",
+      status: "failed",
+      droplet_region: "ap-southeast-1",
+      room_domain: "mktgtrends.cast.remote-tape.io",
+    },
+    {
+      id: "sess_01HZW8D6K3T9R1V4B7N5M2QW",
+      slug: "no-priors",
+      title: "No Priors",
+      status: "ended",
+      droplet_region: "us-east-1",
+      room_domain: "nopriors.cast.remote-tape.io",
+    },
+  ];
+  const sessions = rows.map((row, index) =>
+    makeSession({
+      created_at: `2025-05-${index < 7 ? "17" : "16"}T${String(10 - Math.min(index, 5)).padStart(2, "0")}:21:00.000000000Z`,
+      updated_at: `2025-05-17T${String(10 - Math.min(index, 5)).padStart(2, "0")}:2${index}:00.000000000Z`,
+      ...statusDetails[row.status],
+      ...row,
+    }),
+  );
+  return { name: "mixed", sessions, joinSlug: "joinable" };
 }
 
 function joinableScenario(): ControlScenario {
@@ -144,7 +229,7 @@ function statusScenario(status: SessionStatus): ControlScenario {
     ...makeLifecycleSession(status),
     id: `sess_joinable_${status}`,
     slug: "joinable",
-    title: `Joinable ${titleForStatus(status)}`,
+    title: "The Infra Podcast #312",
   });
   return { name: status, sessions: [session], joinSlug: session.slug };
 }
