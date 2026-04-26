@@ -35,9 +35,12 @@ type IconName =
   | "chevronDown"
   | "chevronLeft"
   | "chevronRight"
+  | "cloud"
   | "copy"
+  | "digitalOcean"
   | "download"
   | "filter"
+  | "infinity"
   | "more"
   | "play"
   | "refresh"
@@ -73,10 +76,17 @@ function Icon({ name }: { name: IconName }) {
     chevronDown: <path d="m6 9 6 6 6-6" />,
     chevronLeft: <path d="m15 18-6-6 6-6" />,
     chevronRight: <path d="m9 18 6-6-6-6" />,
+    cloud: <path d="M17.5 18H7a5 5 0 0 1 .7-9.95A6 6 0 0 1 19 10.5 3.75 3.75 0 0 1 17.5 18z" />,
     copy: (
       <>
         <rect x="9" y="9" width="11" height="11" rx="2" />
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </>
+    ),
+    digitalOcean: (
+      <>
+        <path d="M12 3a9 9 0 0 1 9 9 9 9 0 0 1-9 9h-2v-4h2a5 5 0 1 0-5-5v5H3v-5a9 9 0 0 1 9-9z" />
+        <path d="M3 21h4v-4H3z" />
       </>
     ),
     download: (
@@ -87,6 +97,9 @@ function Icon({ name }: { name: IconName }) {
       </>
     ),
     filter: <path d="M4 5h16l-6 7v5l-4 2v-7z" />,
+    infinity: (
+      <path d="M8.5 8.5c2.5 0 4.5 7 7 7a3.5 3.5 0 1 0 0-7c-2.5 0-4.5 7-7 7a3.5 3.5 0 1 1 0-7z" />
+    ),
     more: (
       <>
         <circle cx="12" cy="5" r="1" />
@@ -407,13 +420,11 @@ function CreateSessionPage() {
         </div>
       </div>
       <div className="create-grid">
-        <section className="panel form-panel">
-          <CreateSessionForm
-            busy={create.isPending}
-            error={create.error}
-            onSubmit={(input) => create.mutate(input)}
-          />
-        </section>
+        <CreateSessionForm
+          busy={create.isPending}
+          error={create.error}
+          onSubmit={(input) => create.mutate(input)}
+        />
         <ProvisionCard />
       </div>
     </Shell>
@@ -438,8 +449,8 @@ function CreateSessionForm({
   const [title, setTitle] = useState("The Infra Podcast #313");
   const [slug, setSlug] = useState("the-infra-podcast-313");
   const [slugDirty, setSlugDirty] = useState(false);
-  const [region, setRegion] = useState("us-east-1");
-  const [size, setSize] = useState("s-2vcpu-4gb");
+  const [region, setRegion] = useState("US East 1 (New York)");
+  const [size, setSize] = useState("2 vCPU / 4 GB RAM");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -453,94 +464,112 @@ function CreateSessionForm({
 
   return (
     <form className="create-form" onSubmit={submit}>
-      {error ? <Alert>{messageFromError(error)}</Alert> : null}
-      <Field
-        label="Session title"
-        help="A friendly name to identify your session."
-        count={`${title.length} / 100`}
-      >
-        <input
-          id="title"
-          value={title}
-          onChange={(event) => {
-            setTitle(event.target.value);
-            if (!slugDirty) setSlug(slugify(event.target.value));
-          }}
-          required
-          maxLength={100}
-          placeholder="The Infra Podcast #313"
-        />
-      </Field>
-      <Field
-        label="Session slug"
-        help="Unique slug used in URLs and subdomains. Lowercase letters, numbers, and dashes only."
-        count={`${slug.length} / 63`}
-      >
-        <input
-          id="slug"
-          value={slug}
-          onChange={(event) => {
-            setSlugDirty(true);
-            setSlug(event.target.value);
-          }}
-          pattern="[a-z0-9-]{1,63}"
-          placeholder="the-infra-podcast-313"
-        />
-        <div className="ok-line">✓ Slug is available</div>
-      </Field>
-      <Field
-        label="Preferred region"
-        help="Select the region closest to your guests for the best recording quality."
-      >
-        <input
-          id="region"
-          value={region}
-          onChange={(event) => setRegion(event.target.value)}
-          placeholder="Use backend default"
-        />
-      </Field>
-      <Field
-        label="Droplet size"
-        help="Larger droplets provide more headroom for high-bitrate recordings."
-      >
-        <div className="input-wrap">
+      <section className="panel form-panel">
+        {error ? <Alert>{messageFromError(error)}</Alert> : null}
+        <Field
+          label="Session title"
+          help="A friendly name to identify your session."
+          count={`${title.length} / 100`}
+        >
           <input
-            id="size"
-            value={size}
-            onChange={(event) => setSize(event.target.value)}
-            placeholder="Use backend default"
+            id="title"
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              if (!slugDirty) setSlug(slugify(event.target.value));
+            }}
+            required
+            maxLength={100}
+            placeholder="The Infra Podcast #313"
           />
-          <span>Recommended</span>
-        </div>
-      </Field>
-      <Field label="Room subdomain" help="Your guests will use this link to join the session.">
-        <div className="subdomain">
-          <span>{slug || "session-slug"}</span>
-          <b>.remote-tape.io</b>
-          <button type="button">□</button>
-        </div>
-        <a href={`/join/${slug}`}>https://{slug || "session-slug"}.remote-tape.io/join</a>
-      </Field>
-      <Field label="Host name" help="Display name shown to guests in the session." count="12 / 80">
-        <input value="Andrew Mason" readOnly />
-      </Field>
-      <Field
-        label="Notes (optional)"
-        help="Any additional context about this recording."
-        count="0 / 500"
-      >
-        <textarea placeholder="e.g. episode topic, guests, recording plan…" />
-      </Field>
-      <button type="button" className="advanced">
-        Advanced options <span>›</span>
-        <small>Tags, data retention, recording settings, and more.</small>
-      </button>
+        </Field>
+        <Field
+          label="Session slug"
+          help="Unique slug used in URLs and subdomains. Lowercase letters, numbers, and dashes only."
+          count={`${slug.length} / 63`}
+        >
+          <input
+            id="slug"
+            value={slug}
+            onChange={(event) => {
+              setSlugDirty(true);
+              setSlug(event.target.value);
+            }}
+            pattern="[a-z0-9-]{1,63}"
+            placeholder="the-infra-podcast-313"
+          />
+          <div className="ok-line">✓ Slug is available</div>
+        </Field>
+        <Field
+          label="Preferred region"
+          help="Select the region closest to your guests for the best recording quality."
+        >
+          <div className="selectish">
+            <span>🇺🇸</span>
+            <input
+              id="region"
+              value={region}
+              onChange={(event) => setRegion(event.target.value)}
+              placeholder="Use backend default"
+            />
+            <Icon name="chevronDown" />
+          </div>
+        </Field>
+        <Field
+          label="Droplet size"
+          help="Larger droplets provide more headroom for high-bitrate recordings."
+        >
+          <div className="input-wrap">
+            <input
+              id="size"
+              value={size}
+              onChange={(event) => setSize(event.target.value)}
+              placeholder="Use backend default"
+            />
+            <span>Recommended</span>
+          </div>
+        </Field>
+        <Field label="Room subdomain" help="Your guests will use this link to join the session.">
+          <div className="subdomain">
+            <span>{slug || "session-slug"}</span>
+            <b>.remote-tape.io</b>
+            <button type="button" aria-label="Copy room subdomain">
+              <Icon name="copy" />
+            </button>
+          </div>
+          <a href={`/join/${slug}`}>https://{slug || "session-slug"}.remote-tape.io/join</a>
+        </Field>
+        <Field
+          label="Host name"
+          help="Display name shown to guests in the session."
+          count="12 / 80"
+        >
+          <input value="Andrew Mason" readOnly />
+        </Field>
+        <Field
+          label="Notes (optional)"
+          help="Any additional context about this recording."
+          count="0 / 500"
+        >
+          <textarea placeholder="e.g. episode topic, guests, recording plan…" />
+        </Field>
+        <button type="button" className="advanced">
+          Advanced options <Icon name="chevronRight" />
+          <small>Tags, data retention, recording settings, and more.</small>
+        </button>
+      </section>
       <div className="form-actions">
         <Link className="button ghost" to={{ pathname: "/sessions", search: location.search }}>
           Cancel
         </Link>
-        <button className="primary" type="submit" disabled={busy}>
-          {busy ? "Creating…" : "+ Create session"}
+        <button className="primary" type="submit" disabled={busy} aria-label="+ Create session">
+          {busy ? (
+            "Creating…"
+          ) : (
+            <>
+              <span className="plus">＋</span> Create session
+            </>
+          )}
         </button>
       </div>
     </form>
@@ -572,10 +601,10 @@ function Field({
     <div className="field">
       <div className="field-head">
         <label htmlFor={id}>{label}</label>
-        {count ? <span>{count}</span> : null}
       </div>
       <p>{help}</p>
       {children}
+      {count ? <span className="field-count">{count}</span> : null}
     </div>
   );
 }
@@ -609,7 +638,17 @@ function ProvisionCard() {
       {items.map(([tone, title, copy]) => (
         <div className="provision-item" key={title}>
           <span className={`round-icon ${tone}`}>
-            {tone === "do" ? "◖" : tone === "cf" ? "☁" : tone === "link" ? "∞" : "↻"}
+            <Icon
+              name={
+                tone === "do"
+                  ? "digitalOcean"
+                  : tone === "cf"
+                    ? "cloud"
+                    : tone === "link"
+                      ? "infinity"
+                      : "refresh"
+              }
+            />
           </span>
           <div>
             <strong>{title}</strong>

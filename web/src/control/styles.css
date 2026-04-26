@@ -291,7 +291,8 @@ h2 {
   margin-bottom: 18px;
 }
 .narrow-head {
-  max-width: 760px;
+  margin-bottom: 8px;
+  max-width: 610px;
 }
 .back {
   margin: 0 0 12px;
@@ -381,7 +382,6 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.06em;
   margin: 8px 0 13px 48px;
   text-transform: uppercase;
 }
@@ -719,14 +719,13 @@ tr:hover td {
   grid-template-columns: minmax(580px, 1fr) 388px;
 }
 .form-panel {
-  padding: 16px 20px 0;
+  padding: 22px 20px 0;
 }
 .field {
-  border-bottom: 1px solid var(--line-soft);
-  padding-bottom: 7px;
+  padding-bottom: 8px;
 }
 .field + .field {
-  padding-top: 2px;
+  padding-top: 0;
 }
 .field-head {
   align-items: center;
@@ -744,9 +743,11 @@ label {
   font-size: 13px;
   margin: 0 0 6px;
 }
-.field-head span,
-.create-form textarea + span {
+.field-count {
   color: var(--muted);
+  display: block;
+  margin-top: 4px;
+  text-align: right;
 }
 input,
 textarea {
@@ -759,10 +760,11 @@ textarea {
   width: 100%;
 }
 textarea {
-  min-height: 40px;
+  min-height: 56px;
   resize: vertical;
 }
 .input-wrap,
+.selectish,
 .subdomain {
   align-items: center;
   background: #121a20;
@@ -771,8 +773,16 @@ textarea {
   display: flex;
   overflow: hidden;
 }
-.input-wrap input {
+.input-wrap input,
+.selectish input {
   border: 0;
+}
+.selectish > span {
+  padding-left: 12px;
+}
+.selectish .icon {
+  color: var(--muted);
+  margin-right: 12px;
 }
 .input-wrap span {
   background: #23401f;
@@ -796,18 +806,25 @@ textarea {
 }
 .ok-line {
   color: var(--green);
+  display: inline-block;
   font-size: 13px;
+  margin-top: 6px;
+}
+.ok-line + .field-count {
+  display: inline-block;
+  float: right;
   margin-top: 6px;
 }
 .advanced {
   background: transparent;
   border: 0;
+  border-top: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
   border-radius: 0;
   color: var(--body);
   display: grid;
   grid-template-columns: 1fr auto;
-  padding: 9px 0;
+  padding: 14px 0;
   text-align: left;
   width: 100%;
 }
@@ -824,7 +841,7 @@ textarea {
 }
 .provision-card {
   align-self: start;
-  padding: 24px 20px;
+  padding: 24px 20px 0;
 }
 .provision-item {
   border-bottom: 1px dashed var(--line);
@@ -840,6 +857,6 @@ textarea {
 .provision-note {
   border-top: 1px solid var(--line-soft);
   color: var(--muted);
-  margin: 0 -20px -24px;
+  margin: 0 -20px;
   padding: 18px 22px;
 }
