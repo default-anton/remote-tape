@@ -208,10 +208,50 @@ function mixedScenario(): ControlScenario {
       room_domain: "nopriors.cast.remote-tape.io",
     },
   ];
-  const sessions = rows.map((row, index) =>
+  const extraRows: Array<Partial<Session> & { status: SessionStatus }> = [
+    { title: "Provisioning Backfill", status: "created" },
+    ...Array.from({ length: 7 }, (_, index) => ({
+      title: `Ready Session ${index + 1}`,
+      status: "ready" as const,
+    })),
+    ...Array.from({ length: 4 }, (_, index) => ({
+      title: `Active Session ${index + 1}`,
+      status: "active" as const,
+    })),
+    { title: "Download Backfill", status: "awaiting_manual_download" },
+    { title: "Failed Backfill", status: "failed" },
+  ];
+  const createdAt = [
+    "2025-05-17T17:21:00.000000000Z",
+    "2025-05-17T16:58:00.000000000Z",
+    "2025-05-17T16:30:00.000000000Z",
+    "2025-05-17T16:00:00.000000000Z",
+    "2025-05-17T15:15:00.000000000Z",
+    "2025-05-17T06:47:00.000000000Z",
+    "2025-05-17T05:05:00.000000000Z",
+    "2025-05-16T14:30:00.000000000Z",
+    "2025-05-17T01:45:00.000000000Z",
+    "2025-05-17T00:20:00.000000000Z",
+  ];
+  const updatedAt = [
+    "2025-05-17T17:22:00.000000000Z",
+    "2025-05-17T17:01:00.000000000Z",
+    "2025-05-17T16:31:00.000000000Z",
+    "2025-05-17T16:42:00.000000000Z",
+    "2025-05-17T16:10:00.000000000Z",
+    "2025-05-17T15:44:00.000000000Z",
+    "2025-05-17T14:20:00.000000000Z",
+    "2025-05-16T16:02:00.000000000Z",
+    "2025-05-17T01:48:00.000000000Z",
+    "2025-05-17T01:15:00.000000000Z",
+  ];
+  const sessions = [...rows, ...extraRows].map((row, index) =>
     makeSession({
-      created_at: `2025-05-${index < 7 ? "17" : "16"}T${String(10 - Math.min(index, 5)).padStart(2, "0")}:21:00.000000000Z`,
-      updated_at: `2025-05-17T${String(10 - Math.min(index, 5)).padStart(2, "0")}:2${index}:00.000000000Z`,
+      id: row.id ?? `sess_01HZWMIXED${String(index).padStart(2, "0")}`,
+      slug: row.slug ?? `mixed-session-${index}`,
+      room_domain: row.room_domain ?? `session-${index}.cast.remote-tape.io`,
+      created_at: createdAt[index] ?? "2025-05-16T17:00:00.000000000Z",
+      updated_at: updatedAt[index] ?? "2025-05-17T17:00:00.000000000Z",
       ...statusDetails[row.status],
       ...row,
     }),

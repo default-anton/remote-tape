@@ -28,19 +28,106 @@ const lifecycle = [
   "ended",
 ];
 
-const statusMeta: Record<string, { label: string; tone: string; icon: string }> = {
-  created: { label: "created", tone: "orange", icon: "○" },
-  provisioning: { label: "provisioning", tone: "orange", icon: "◌" },
-  waiting_for_dns: { label: "waiting_for_dns", tone: "yellow", icon: "◷" },
-  ready: { label: "ready", tone: "green", icon: "✓" },
-  active: { label: "active", tone: "blue", icon: "⌁" },
-  finalizing: { label: "finalizing", tone: "purple", icon: "◌" },
-  awaiting_manual_download: { label: "awaiting_manual_download", tone: "purple", icon: "⇩" },
-  teardown_pending: { label: "teardown_pending", tone: "yellow", icon: "↻" },
-  tearing_down: { label: "tearing_down", tone: "yellow", icon: "↻" },
-  ended: { label: "ended", tone: "gray", icon: "✓" },
-  failed: { label: "failed", tone: "red", icon: "△" },
+type IconName =
+  | "activity"
+  | "calendar"
+  | "check"
+  | "chevronDown"
+  | "chevronLeft"
+  | "chevronRight"
+  | "copy"
+  | "download"
+  | "filter"
+  | "more"
+  | "play"
+  | "refresh"
+  | "search"
+  | "square"
+  | "spinner"
+  | "triangle";
+
+const statusMeta: Record<string, { label: string; tone: string; icon: IconName }> = {
+  created: { label: "created", tone: "orange", icon: "spinner" },
+  provisioning: { label: "provisioning", tone: "orange", icon: "spinner" },
+  waiting_for_dns: { label: "waiting_for_dns", tone: "yellow", icon: "spinner" },
+  ready: { label: "ready", tone: "green", icon: "check" },
+  active: { label: "active", tone: "blue", icon: "activity" },
+  finalizing: { label: "finalizing", tone: "purple", icon: "spinner" },
+  awaiting_manual_download: { label: "awaiting_manual_download", tone: "purple", icon: "download" },
+  teardown_pending: { label: "teardown_pending", tone: "yellow", icon: "calendar" },
+  tearing_down: { label: "tearing_down", tone: "yellow", icon: "refresh" },
+  ended: { label: "ended", tone: "gray", icon: "check" },
+  failed: { label: "failed", tone: "red", icon: "triangle" },
 };
+
+function Icon({ name }: { name: IconName }) {
+  const paths: Record<IconName, ReactNode> = {
+    activity: <polyline points="2 12 5 12 8 4 12 20 16 8 19 12 22 12" />,
+    calendar: (
+      <>
+        <path d="M8 2v4M16 2v4M3 10h18" />
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+      </>
+    ),
+    check: <path d="m5 12 4 4L19 6" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
+    chevronLeft: <path d="m15 18-6-6 6-6" />,
+    chevronRight: <path d="m9 18 6-6-6-6" />,
+    copy: (
+      <>
+        <rect x="9" y="9" width="11" height="11" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </>
+    ),
+    download: (
+      <>
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </>
+    ),
+    filter: <path d="M4 5h16l-6 7v5l-4 2v-7z" />,
+    more: (
+      <>
+        <circle cx="12" cy="5" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="12" cy="19" r="1" />
+      </>
+    ),
+    play: <path d="m8 5 11 7-11 7z" />,
+    refresh: (
+      <>
+        <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+        <path d="M20 5v6h-6" />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </>
+    ),
+    square: <rect x="7" y="7" width="10" height="10" rx="1" />,
+    spinner: (
+      <>
+        <path d="M21 12a9 9 0 0 1-9 9" />
+        <path d="M3 12a9 9 0 0 1 9-9" />
+      </>
+    ),
+    triangle: (
+      <>
+        <path d="M12 3 22 20H2z" />
+        <path d="M12 9v5" />
+        <path d="M12 17h.01" />
+      </>
+    ),
+  };
+  return (
+    <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
+}
 
 export function App() {
   return (
@@ -99,7 +186,8 @@ function Stats({ sessions }: { sessions: Session[] }) {
           acc.provisioning += 1;
         if (session.status === "ready") acc.ready += 1;
         if (session.status === "active") acc.active += 1;
-        if (session.status === "awaiting_manual_download") acc.awaiting += 1;
+        if (["finalizing", "awaiting_manual_download", "teardown_pending"].includes(session.status))
+          acc.awaiting += 1;
         if (session.status === "failed") acc.failed += 1;
         return acc;
       },
@@ -111,21 +199,33 @@ function Stats({ sessions }: { sessions: Session[] }) {
     <div className="stats mock-stats">
       <Stat
         tone="orange"
-        icon="◌"
+        icon="spinner"
         label="Provisioning"
         value={counts.provisioning}
         hint="Creating resources"
       />
-      <Stat tone="green" icon="✓" label="Ready" value={counts.ready} hint="Ready to start" />
-      <Stat tone="blue" icon="⌁" label="Active" value={counts.active} hint="Currently recording" />
+      <Stat tone="green" icon="check" label="Ready" value={counts.ready} hint="Ready to start" />
+      <Stat
+        tone="blue"
+        icon="activity"
+        label="Active"
+        value={counts.active}
+        hint="Currently recording"
+      />
       <Stat
         tone="purple"
-        icon="⇩"
+        icon="download"
         label="Awaiting download"
         value={counts.awaiting}
         hint="Recording complete"
       />
-      <Stat tone="red" icon="△" label="Failed" value={counts.failed} hint="Needs attention" />
+      <Stat
+        tone="red"
+        icon="triangle"
+        label="Failed"
+        value={counts.failed}
+        hint="Needs attention"
+      />
     </div>
   );
 }
@@ -138,14 +238,16 @@ function Stat({
   hint,
 }: {
   tone: string;
-  icon: string;
+  icon: IconName;
   label: string;
   value: number;
   hint: string;
 }) {
   return (
     <div className="stat cardish">
-      <div className={`round-icon ${tone}`}>{icon}</div>
+      <div className={`round-icon ${tone}`}>
+        <Icon name={icon} />
+      </div>
       <div className="stat-label">{label}</div>
       <b>{value}</b>
       <span className="muted">{hint}</span>
@@ -160,7 +262,7 @@ function Toolbar() {
   return (
     <div className="toolbar">
       <label className="search-field">
-        <span>⌕</span>
+        <Icon name="search" />
         <input aria-label="Search sessions" placeholder="Search sessions…" />
         <kbd>⌘K</kbd>
       </label>
@@ -168,10 +270,10 @@ function Toolbar() {
       <FakeSelect label="Region" value="All regions" />
       <FakeSelect label="Created" value="Any time" />
       <button type="button" className="button ghost">
-        ▽ Filters
+        <Icon name="filter" /> Filters
       </button>
       <button type="button" className="button icon-only" aria-label="Refresh">
-        ↻
+        <Icon name="refresh" />
       </button>
     </div>
   );
@@ -182,7 +284,9 @@ function FakeSelect({ label, value }: { label: string; value: string }) {
     <button type="button" className="fake-select">
       <span>{label}</span>
       {value}
-      <b>⌄</b>
+      <b>
+        <Icon name="chevronDown" />
+      </b>
     </button>
   );
 }
@@ -209,7 +313,7 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
           </tr>
         </thead>
         <tbody>
-          {sessions.map((session) => (
+          {sessions.slice(0, 10).map((session) => (
             <tr key={session.id}>
               <td>
                 <span className={`tiny-dot ${statusTone(session.status)}`} />
@@ -221,7 +325,9 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
                 </Link>
                 <br />
                 <span className="row-id">{session.id}</span>
-                <span className="copy-mini">□</span>
+                <span className="copy-mini">
+                  <Icon name="copy" />
+                </span>
               </td>
               <td>
                 <StatusBadge status={session.status} />
@@ -237,8 +343,12 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
               </td>
               <td>
                 <div className="actions">
-                  <button type="button">{actionIcon(session.status)}</button>
-                  <button type="button">⋮</button>
+                  <button type="button">
+                    <Icon name={actionIcon(session.status)} />
+                  </button>
+                  <button type="button">
+                    <Icon name="more" />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -250,15 +360,21 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
           Showing 1–{Math.min(10, sessions.length)} of {Math.max(24, sessions.length)} sessions
         </span>
         <div>
-          <button type="button">‹</button>
+          <button type="button">
+            <Icon name="chevronLeft" />
+          </button>
           <button className="current" type="button">
             1
           </button>
           <button type="button">2</button>
           <button type="button">3</button>
-          <button type="button">›</button>
+          <button type="button">
+            <Icon name="chevronRight" />
+          </button>
         </div>
-        <button type="button">10 per page ⌄</button>
+        <button type="button">
+          10 per page <Icon name="chevronDown" />
+        </button>
       </div>
     </div>
   );
@@ -539,7 +655,10 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <div>
           <h1>{session.title}</h1>
           <p>
-            <code>{session.id}</code> <span className="copy-mini">□</span>{" "}
+            <code>{session.id}</code>{" "}
+            <span className="copy-mini">
+              <Icon name="copy" />
+            </span>{" "}
             <StatusBadge status={session.status} />
           </p>
         </div>
@@ -562,13 +681,19 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         </Info>
         <Info label="Droplet ID">{value(session.droplet_id)}</Info>
         <Info label="Session ID">
-          {session.id} <span className="copy-mini">□</span>
+          {session.id}{" "}
+          <span className="copy-mini">
+            <Icon name="copy" />
+          </span>
         </Info>
         <Info label="Region">
           <Region region={session.droplet_region} />
         </Info>
         <Info label="Droplet IP">
-          {value(session.droplet_ip)} <span className="copy-mini">□</span>
+          {value(session.droplet_ip)}{" "}
+          <span className="copy-mini">
+            <Icon name="copy" />
+          </span>
         </Info>
         <Info label="Live heartbeat">
           <span className="healthy">● Healthy</span>
@@ -893,10 +1018,12 @@ function JoinShell({ children }: { children: ReactNode }) {
 }
 
 function StatusBadge({ status, label }: { status: string; label?: string }) {
-  const meta = statusMeta[status] ?? { label: status, tone: "gray", icon: "○" };
+  const meta = statusMeta[status] ?? { label: status, tone: "gray", icon: "spinner" as IconName };
   return (
     <span className={`status ${status.replaceAll("_", "-")} ${meta.tone}`}>
-      <b>{meta.icon}</b>
+      <b>
+        <Icon name={meta.icon} />
+      </b>
       {label ?? meta.label}
     </span>
   );
@@ -928,14 +1055,14 @@ function regionLabel(region: string) {
 function statusTone(status: string) {
   return statusMeta[status]?.tone ?? "gray";
 }
-function actionIcon(status: string) {
+function actionIcon(status: string): IconName {
   return status === "active"
-    ? "■"
+    ? "square"
     : status.includes("download") || status === "ended" || status === "finalizing"
-      ? "⇩"
+      ? "download"
       : status.includes("teardown") || status === "failed"
-        ? "↻"
-        : "▷";
+        ? "refresh"
+        : "play";
 }
 function domainFor(session: Session) {
   return session.room_domain ?? `${session.slug}.cast.remote-tape.io`;
