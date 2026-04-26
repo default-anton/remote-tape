@@ -3,7 +3,7 @@
 /bin/
 /web/node_modules/
 /web/dist/
-!.envrc
+.envrc
 /internal/controlui/dist/*
 !/internal/controlui/dist/.gitkeep
 *.db
