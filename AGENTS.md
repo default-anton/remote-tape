@@ -16,6 +16,7 @@ Start with `DESIGN.md` for architecture, lifecycle, recording targets, and imple
 - Reliability and recoverability over features.
 - Design for bad networks: reconnects, packet loss, slow uploads, and mobile clients.
 - Protect the recording path over convenience features.
+- Keep the mock UI current when adding or changing user-visible web features.
 - Never corrupt or overwrite previously committed recording chunks.
 - Keep control plane, live call, local capture, and upload paths loosely coupled.
 - Make provisioning/teardown idempotent, observable, retryable, and safe after partial failure.
