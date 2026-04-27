@@ -1,4 +1,4 @@
-import { Shell } from "./Layout";
+import { Shell } from "../components/Shell";
 
 export function PlaceholderPage({ title }: { title: string }) {
   return (

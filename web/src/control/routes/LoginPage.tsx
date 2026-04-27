@@ -1,4 +1,4 @@
-import { Logo } from "./Layout";
+import { Logo } from "../components/Shell";
 
 export function LoginPage() {
   return (
