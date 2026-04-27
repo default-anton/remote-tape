@@ -1,23 +1,23 @@
 import { type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { joinSession } from "../api";
+import { useJoinSession } from "../api/hooks";
 import { Alert } from "../components/Alert";
 import { Logo } from "../components/Shell";
 import { StatusBadge } from "../components/StatusBadge";
-import { isProvisioningLikeStatus, type SessionStatus } from "../domain/sessionStatus";
+import {
+  isJoinRedirectReadyStatus,
+  isProvisioningLikeStatus,
+  isTerminalStatus,
+  shouldPollJoin,
+  type SessionStatus,
+} from "../domain/sessionStatus";
 import { messageFromError } from "../utils/errors";
 
 export function JoinPage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const token = params.get("token") ?? "";
-  const join = useQuery({
-    queryKey: ["join", slug, token],
-    queryFn: () => joinSession(slug ?? "", token),
-    enabled: Boolean(slug && token),
-    retry: false,
-  });
+  const join = useJoinSession(slug, token);
 
   if (!slug || !token)
     return (
@@ -39,42 +39,107 @@ export function JoinPage() {
     );
   if (!join.data) return null;
 
+  const status = join.data.session.status;
+  const state = joinState(status);
+
   return (
     <JoinShell>
       <h1>{join.data.session.title}</h1>
       <p>
-        <StatusBadge status={join.data.session.status} label="Provisioning your room" />
+        <StatusBadge status={status} label={state.badgeLabel} />
       </p>
-      <p className="join-lead">We’ll redirect you automatically when the session is ready.</p>
-      <JoinSteps status={join.data.session.status} />
-      <div className="waiting">
-        <div className="spinner" />
-        <h2>{joinWaitingTitle(join.data.session.status)}</h2>
-        <p className="muted">This usually takes 10–30 seconds.</p>
-        <p>
-          <span className="live-dot" /> Polling every 5 seconds
-        </p>
-      </div>
-      <div className="join-meta">
-        <div>
-          <span className="round-icon gray">↗</span>
-          <p>
-            <small>Session</small>
-            <strong>{join.data.session.slug}</strong>
-          </p>
-        </div>
-        <div>
-          <span className="round-icon gray">♙</span>
-          <p>
-            <small>You're joining as</small>
-            <strong>{join.data.token.role}</strong>
-          </p>
-        </div>
-      </div>
+      <p className="join-lead">{state.lead}</p>
+      {state.showSteps ? <JoinSteps status={status} /> : null}
+      {state.kind === "waiting" ? <WaitingPanel status={status} /> : null}
+      {state.kind === "ready" ? <ReadyPanel /> : null}
+      {state.kind === "unavailable" ? <UnavailablePanel status={status} /> : null}
+      <JoinMeta slug={join.data.session.slug} role={join.data.token.role} />
       <p className="info-note">
         ⓘ If this takes unusually long, <a href="mailto:host@example.test">contact your host</a>.
       </p>
     </JoinShell>
+  );
+}
+
+function joinState(status: SessionStatus) {
+  if (shouldPollJoin(status)) {
+    return {
+      kind: "waiting",
+      badgeLabel: "Provisioning your room",
+      lead: "We’ll keep checking until the session is ready.",
+      showSteps: true,
+    } as const;
+  }
+  if (isJoinRedirectReadyStatus(status)) {
+    return {
+      kind: "ready",
+      badgeLabel: "Room is ready",
+      lead: "The session is ready to join.",
+      showSteps: true,
+    } as const;
+  }
+  return {
+    kind: "unavailable",
+    badgeLabel: isTerminalStatus(status) ? "Session unavailable" : "Join unavailable",
+    lead: "This session is not accepting new joins right now.",
+    showSteps: false,
+  } as const;
+}
+
+function WaitingPanel({ status }: { status: SessionStatus }) {
+  return (
+    <div className="waiting">
+      <div className="spinner" />
+      <h2>{joinWaitingTitle(status)}</h2>
+      <p className="muted">This usually takes 10–30 seconds.</p>
+      <p>
+        <span className="live-dot" /> Polling every 5 seconds
+      </p>
+    </div>
+  );
+}
+
+function ReadyPanel() {
+  return (
+    <div className="waiting">
+      <h2>Room is ready.</h2>
+      <p className="muted">
+        If you are not redirected automatically, contact the host for the room URL.
+      </p>
+    </div>
+  );
+}
+
+function UnavailablePanel({ status }: { status: SessionStatus }) {
+  return (
+    <Alert>
+      {status === "failed"
+        ? "This session failed before it became joinable. Contact the host for a new link."
+        : status === "ended"
+          ? "This session has ended and can no longer be joined."
+          : "This session is past the joinable phase."}
+    </Alert>
+  );
+}
+
+function JoinMeta({ slug, role }: { slug: string; role: string }) {
+  return (
+    <div className="join-meta">
+      <div>
+        <span className="round-icon gray">↗</span>
+        <p>
+          <small>Session</small>
+          <strong>{slug}</strong>
+        </p>
+      </div>
+      <div>
+        <span className="round-icon gray">♙</span>
+        <p>
+          <small>You're joining as</small>
+          <strong>{role}</strong>
+        </p>
+      </div>
+    </div>
   );
 }
 

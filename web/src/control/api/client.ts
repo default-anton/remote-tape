@@ -5,7 +5,7 @@ import {
   JoinResponseSchema,
   SessionsResponseSchema,
   type CreateSessionInput,
-} from "./types";
+} from "../types";
 
 async function requestJSON<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {

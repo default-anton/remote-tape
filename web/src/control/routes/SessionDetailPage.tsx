@@ -1,7 +1,6 @@
 import { type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { getSession } from "../api";
+import { useSessionDetail } from "../api/hooks";
 import { Alert } from "../components/Alert";
 import { Icon } from "../components/Icon";
 import { Region, regionLabel } from "../components/Region";
@@ -24,11 +23,7 @@ export function SessionDetailPage() {
   const { id } = useParams();
   const location = useLocation();
   const created = isCreatedState(location.state) ? location.state.created : undefined;
-  const detail = useQuery({
-    queryKey: ["sessions", id],
-    queryFn: () => getSession(id ?? ""),
-    enabled: Boolean(id),
-  });
+  const detail = useSessionDetail(id);
 
   if (!id) return <NotFound />;
   return (

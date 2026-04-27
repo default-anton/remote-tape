@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createSession } from "../../api";
+import { useCreateSession } from "../../api/hooks";
 import { Shell } from "../../components/Shell";
 import { CreateSessionForm } from "./components/CreateSessionForm";
 import { ProvisionCard } from "./components/ProvisionCard";
@@ -8,11 +7,8 @@ import { ProvisionCard } from "./components/ProvisionCard";
 export function CreateSessionPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const create = useMutation({
-    mutationFn: createSession,
-    onSuccess: async (created) => {
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+  const create = useCreateSession({
+    onSuccess: (created) => {
       navigate(
         { pathname: `/sessions/${created.session.id}`, search: location.search },
         { state: { created } },

@@ -1,6 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { listSessions } from "../../api";
+import { useSessions } from "../../api/hooks";
 import { Alert } from "../../components/Alert";
 import { Shell } from "../../components/Shell";
 import { messageFromError } from "../../utils/errors";
@@ -10,7 +9,7 @@ import { Toolbar } from "./components/Toolbar";
 
 export function SessionsPage() {
   const location = useLocation();
-  const sessions = useQuery({ queryKey: ["sessions"], queryFn: listSessions });
+  const sessions = useSessions();
   const rows = sessions.data?.sessions ?? [];
 
   return (

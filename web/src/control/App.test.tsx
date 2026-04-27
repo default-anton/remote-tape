@@ -1,8 +1,14 @@
 import { fireEvent, screen } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  joinRefetchInterval,
+  sessionDetailRefetchInterval,
+  sessionsListRefetchInterval,
+} from "./api/hooks";
 import { isAttentionStatus } from "./domain/sessionStatus";
-import { makeSession } from "./testing/fixtures";
+import { makeDetail, makeJoinResponse, makeSession } from "./testing/fixtures";
 import { createControlMockApi } from "./testing/handlers";
 import { renderApp } from "./testing/renderApp";
 import { SessionSchema } from "./types";
@@ -106,7 +112,28 @@ describe("control app", () => {
     renderApp("/join/joinable?token=host-token&scenario=waiting_for_dns");
 
     expect(await screen.findByText("Provisioning your room")).toBeInTheDocument();
+    expect(screen.getByText("Polling every 5 seconds")).toBeInTheDocument();
     expect(screen.getByText("host")).toBeInTheDocument();
+  });
+
+  it("renders ready join links without pretending to keep polling", async () => {
+    renderApp("/join/joinable?token=guest-token&scenario=ready");
+
+    expect(await screen.findByText("Room is ready")).toBeInTheDocument();
+    expect(screen.getByText("Room is ready.")).toBeInTheDocument();
+    expect(screen.queryByText("Polling every 5 seconds")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provisioning your room")).not.toBeInTheDocument();
+  });
+
+  it("renders failed join links as unavailable without waiting UI", async () => {
+    renderApp("/join/joinable?token=guest-token&scenario=failed");
+
+    expect(await screen.findByText("Session unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText("This session failed before it became joinable.", { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Polling every 5 seconds")).not.toBeInTheDocument();
+    expect(screen.queryByText("Creating droplet")).not.toBeInTheDocument();
   });
 
   it("renders invalid join tokens from the API", async () => {
@@ -157,8 +184,40 @@ describe("control app", () => {
   });
 
   it("renders missing join tokens without calling the API", async () => {
+    let requests = 0;
+    server.use(
+      http.get("/api/join/:slug", () => {
+        requests += 1;
+        return HttpResponse.json({ ok: false, error: "unexpected join request" }, { status: 500 });
+      }),
+    );
+
     renderApp("/join/joinable");
 
     expect(screen.getByText("Join link is missing its token.")).toBeInTheDocument();
+    expect(requests).toBe(0);
+  });
+
+  it("centralizes polling decisions around non-terminal session statuses", () => {
+    expect(sessionsListRefetchInterval({ sessions: [makeSession({ status: "failed" })] })).toBe(
+      false,
+    );
+    expect(
+      sessionsListRefetchInterval({ sessions: [makeSession({ status: "provisioning" })] }),
+    ).toBe(5_000);
+    expect(
+      sessionDetailRefetchInterval({ ...makeDetail(), session: makeSession({ status: "ended" }) }),
+    ).toBe(false);
+    expect(
+      sessionDetailRefetchInterval({ ...makeDetail(), session: makeSession({ status: "active" }) }),
+    ).toBe(5_000);
+    expect(
+      joinRefetchInterval(makeJoinResponse({ session: makeSession({ status: "failed" }) })),
+    ).toBe(false);
+    expect(
+      joinRefetchInterval(
+        makeJoinResponse({ session: makeSession({ status: "waiting_for_dns" }) }),
+      ),
+    ).toBe(5_000);
   });
 });
