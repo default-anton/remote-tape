@@ -24,6 +24,7 @@ export function Stats({ sessions }: { sessions: Session[] }) {
 
   return (
     <div className="stats mock-stats">
+      <Stat tone="blue" icon="activity" label="Total" value={sessions.length} hint="All sessions" />
       <Stat
         tone="orange"
         icon="spinner"
@@ -71,7 +72,7 @@ function Stat({
   hint: string;
 }) {
   return (
-    <div className="stat cardish">
+    <div className="stat cardish" role="group" aria-label={`${label} sessions`}>
       <div className={`round-icon ${tone}`}>
         <Icon name={icon} />
       </div>

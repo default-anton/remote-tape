@@ -13,7 +13,7 @@ import {
   sessionStatusLabel,
   type SessionStatus,
 } from "../domain/sessionStatus";
-import type { CreateSessionResponse, Detail, Event, Session } from "../types";
+import type { AccessToken, CreateSessionResponse, Detail, Event, Session } from "../types";
 import { messageFromError } from "../utils/errors";
 import { formatDate, formatDateTime, formatTime } from "../utils/format";
 import { domainFor, value } from "../utils/session";
@@ -91,12 +91,19 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           <small>Last seen 4s ago</small>
         </Info>
         <Info label="Room domain">{domainFor(session)}</Info>
+        <Info label="Slug">{session.slug}</Info>
+        <Info label="DNS record ID">{value(session.dns_record_id)}</Info>
         <Info label="Created">{formatDateTime(session.created_at)}</Info>
       </section>
+      {session.last_error ? <FailureCard session={session} /> : null}
+      {session.status === "awaiting_manual_download" ? (
+        <ManualDownloadCard session={session} />
+      ) : null}
       <Lifecycle status={session.status} />
       <div className="detail-grid">
         <main>
-          <JoinLinks session={session} created={created} />
+          <JoinLinks created={created} />
+          <AccessTokensCard tokens={detail.access_tokens} />
           <EventsCard events={detail.events} />
         </main>
         <aside className="diagnostic-stack">
@@ -182,13 +189,56 @@ function Lifecycle({ status }: { status: SessionStatus }) {
   );
 }
 
-function JoinLinks({ session, created }: { session: Session; created?: CreateSessionResponse }) {
-  const host = created?.join_links.host.url ?? `https://${domainFor(session)}/host`;
-  const guest = created?.join_links.guest.url ?? `https://${domainFor(session)}/guest`;
+function FailureCard({ session }: { session: Session }) {
+  return (
+    <section className="panel attention space">
+      <h2>Failure details</h2>
+      <p>{session.last_error}</p>
+      <dl>
+        <div>
+          <dt>Phase</dt>
+          <dd>{value(session.last_error_phase)}</dd>
+        </div>
+        <div>
+          <dt>Last error</dt>
+          <dd>{session.last_error_at ? formatDateTime(session.last_error_at) : "—"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function ManualDownloadCard({ session }: { session: Session }) {
+  return (
+    <section className="panel attention space">
+      <h2>Manual download required</h2>
+      <p>Download and verify the recording archive before confirming teardown.</p>
+      {session.recording_download_url ? (
+        <a href={session.recording_download_url}>Download recordings</a>
+      ) : null}
+    </section>
+  );
+}
+
+function JoinLinks({ created }: { created?: CreateSessionResponse }) {
+  if (!created) {
+    return (
+      <section className="panel join-links join-links-unavailable">
+        <div>
+          <span>Join links</span>
+          <p className="muted">
+            Raw host and guest join links are shown only when the session is created. Stored access
+            tokens below show metadata only; token plaintext cannot be recovered.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="panel join-links">
-      <LinkLine label="Host join link" url={host} />
-      <LinkLine label="Guest join link" url={guest} />
+      <LinkLine label="Host join link" url={created.join_links.host.url} />
+      <LinkLine label="Guest join link" url={created.join_links.guest.url} />
     </section>
   );
 }
@@ -203,50 +253,72 @@ function LinkLine({ label, url }: { label: string; url: string }) {
   );
 }
 
+function AccessTokensCard({ tokens }: { tokens: Detail["access_tokens"] }) {
+  return (
+    <section className="panel access-token-card">
+      <div className="section-head">
+        <h2>Access tokens</h2>
+      </div>
+      {tokens.length === 0 ? (
+        <p className="muted">No persisted access token metadata yet.</p>
+      ) : (
+        <ul>
+          {tokens.map((token) => (
+            <li className={token.revoked_at ? "token-revoked" : undefined} key={token.id}>
+              <span className="event-line" />
+              <b>{token.role}</b>
+              <p>
+                {token.label ?? "Unlabeled token"}
+                {token.revoked_at ? " · revoked" : " · active"}
+              </p>
+              <time>{tokenUsageLabel(token)}</time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function tokenUsageLabel(token: AccessToken) {
+  if (token.revoked_at) {
+    return `Revoked ${formatDate(token.revoked_at)} ${formatTime(token.revoked_at)}`;
+  }
+  if (token.last_used_at) {
+    return `Last used ${formatDate(token.last_used_at)} ${formatTime(token.last_used_at)}`;
+  }
+  return "Never used";
+}
+
 function EventsCard({ events }: { events: Event[] }) {
-  const shown = events.length > 3 ? events : [...events, ...syntheticEvents()];
   return (
     <section className="panel events-card">
       <div className="section-head">
         <h2>Session events</h2>
         <button type="button">⇩ Download</button>
       </div>
-      <ul>
-        {shown.slice(0, 10).map((event, index) => (
-          <li key={`${event.id}-${index}`}>
-            <time>{formatTime(event.created_at)}</time>
-            <span className="event-line" />
-            <b>{event.type}</b>
-            <p>{value(event.message)}</p>
-            <time>{formatDate(event.created_at)}</time>
-          </li>
-        ))}
-      </ul>
-      <button className="load-more" type="button">
-        Load more events ↓
-      </button>
+      {events.length === 0 ? (
+        <p className="muted">No session events recorded yet.</p>
+      ) : (
+        <ul>
+          {events.slice(0, 10).map((event) => (
+            <li key={event.id}>
+              <time>{formatTime(event.created_at)}</time>
+              <span className="event-line" />
+              <b>{event.type}</b>
+              <p>{value(event.message)}</p>
+              <time>{formatDate(event.created_at)}</time>
+            </li>
+          ))}
+        </ul>
+      )}
+      {events.length > 10 ? (
+        <button className="load-more" type="button">
+          Load more events ↓
+        </button>
+      ) : null}
     </section>
   );
-}
-
-function syntheticEvents(): Event[] {
-  return [
-    "droplet.create.succeeded",
-    "droplet.booted",
-    "dns.create.succeeded",
-    "session.ready",
-    "session.active",
-    "heartbeat",
-    "heartbeat",
-    "heartbeat",
-  ].map((type, index) => ({
-    id: 20 + index,
-    session_id: "",
-    type,
-    message: type === "heartbeat" ? "Heartbeat received" : type.replaceAll(".", " "),
-    metadata_json: null,
-    created_at: `2025-05-17T10:${String(21 + index).padStart(2, "0")}:00.000000000Z`,
-  }));
 }
 
 function HealthCard({

@@ -109,6 +109,13 @@
   gap: 12px;
   grid-template-columns: 120px 1fr 88px;
 }
+.join-links-unavailable div {
+  align-items: start;
+  grid-template-columns: 120px 1fr;
+}
+.join-links-unavailable p {
+  margin: 0;
+}
 code {
   background: #121a20;
   border: 1px solid var(--line);
@@ -150,6 +157,35 @@ code {
 .events-card p {
   color: var(--muted);
   margin: 0;
+}
+.access-token-card {
+  margin-bottom: 14px;
+  padding: 18px;
+}
+.access-token-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.access-token-card li {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 14px 80px minmax(0, 1fr) 190px;
+  min-height: 32px;
+}
+.access-token-card p {
+  color: var(--muted);
+  margin: 0;
+}
+.access-token-card time {
+  color: var(--muted);
+}
+.access-token-card li.token-revoked {
+  opacity: 0.72;
+}
+.access-token-card li.token-revoked .event-line {
+  background: var(--red);
 }
 .load-more {
   display: flex;

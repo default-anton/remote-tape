@@ -315,7 +315,7 @@ h2 {
 .stats {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   margin-bottom: 30px;
 }
 .stat {
