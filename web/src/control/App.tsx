@@ -11,22 +11,20 @@ import {
 } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createSession, getSession, joinSession, listSessions } from "./api";
+import {
+  isAttentionStatus,
+  isProvisioningLikeStatus,
+  SESSION_LIFECYCLE_STATUSES,
+  sessionLifecycleIndex,
+  sessionStatusClassName,
+  sessionStatusLabel,
+  sessionStatusTone,
+  type SessionStatus,
+} from "./domain/sessionStatus";
 import { Logo, Shell } from "./Layout";
 import { LoginPage } from "./LoginPage";
 import { PlaceholderPage } from "./PlaceholderPage";
 import type { CreateSessionResponse, Detail, Event, Session } from "./types";
-
-const lifecycle = [
-  "created",
-  "provisioning",
-  "waiting_for_dns",
-  "ready",
-  "active",
-  "finalizing",
-  "awaiting_manual_download",
-  "teardown_pending",
-  "ended",
-];
 
 type IconName =
   | "activity"
@@ -48,20 +46,6 @@ type IconName =
   | "square"
   | "spinner"
   | "triangle";
-
-const statusMeta: Record<string, { label: string; tone: string; icon: IconName }> = {
-  created: { label: "created", tone: "orange", icon: "spinner" },
-  provisioning: { label: "provisioning", tone: "orange", icon: "spinner" },
-  waiting_for_dns: { label: "waiting_for_dns", tone: "yellow", icon: "spinner" },
-  ready: { label: "ready", tone: "green", icon: "check" },
-  active: { label: "active", tone: "blue", icon: "activity" },
-  finalizing: { label: "finalizing", tone: "purple", icon: "spinner" },
-  awaiting_manual_download: { label: "awaiting_manual_download", tone: "purple", icon: "download" },
-  teardown_pending: { label: "teardown_pending", tone: "yellow", icon: "calendar" },
-  tearing_down: { label: "tearing_down", tone: "yellow", icon: "refresh" },
-  ended: { label: "ended", tone: "gray", icon: "check" },
-  failed: { label: "failed", tone: "red", icon: "triangle" },
-};
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -195,13 +179,11 @@ function Stats({ sessions }: { sessions: Session[] }) {
   const counts = useMemo(() => {
     return sessions.reduce(
       (acc, session) => {
-        if (["created", "provisioning", "waiting_for_dns"].includes(session.status))
-          acc.provisioning += 1;
+        if (isProvisioningLikeStatus(session.status)) acc.provisioning += 1;
         if (session.status === "ready") acc.ready += 1;
         if (session.status === "active") acc.active += 1;
-        if (["finalizing", "awaiting_manual_download", "teardown_pending"].includes(session.status))
-          acc.awaiting += 1;
-        if (session.status === "failed") acc.failed += 1;
+        if (isAwaitingDownloadLikeStatus(session.status)) acc.awaiting += 1;
+        if (isAttentionStatus(session.status)) acc.failed += 1;
         return acc;
       },
       { provisioning: 0, ready: 0, active: 0, awaiting: 0, failed: 0 },
@@ -329,7 +311,7 @@ function SessionTable({ sessions }: { sessions: Session[] }) {
           {sessions.slice(0, 10).map((session) => (
             <tr key={session.id}>
               <td>
-                <span className={`tiny-dot ${statusTone(session.status)}`} />
+                <span className={`tiny-dot ${sessionStatusTone(session.status)}`} />
                 <Link
                   className="row-title"
                   to={{ pathname: `/sessions/${session.id}`, search: location.search }}
@@ -800,20 +782,32 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Lifecycle({ status }: { status: string }) {
-  const current = Math.max(0, lifecycle.indexOf(status));
+function Lifecycle({ status }: { status: SessionStatus }) {
+  const current = sessionLifecycleIndex(status);
   return (
     <section className="panel lifecycle">
-      {lifecycle.map((step, index) => (
-        <div
-          className={`life-step ${index < current ? "done" : ""} ${index === current ? "current" : ""}`}
-          key={step}
-        >
-          <span>{index < current ? "✓" : index === current ? statusMeta[step]?.icon : ""}</span>
-          <strong>{step}</strong>
-          <small>{index <= current ? `10:2${index}:0${index} AM` : ""}</small>
+      {isAttentionStatus(status) ? (
+        <div className="life-alert">
+          <StatusBadge status={status} />
+          <span>
+            Lifecycle stopped before successful completion. Check the error details and events.
+          </span>
         </div>
-      ))}
+      ) : null}
+      {SESSION_LIFECYCLE_STATUSES.map((step, index) => {
+        const isDone = current !== null && index < current;
+        const isCurrent = current !== null && index === current;
+        return (
+          <div
+            className={`life-step ${isDone ? "done" : ""} ${isCurrent ? "current" : ""}`}
+            key={step}
+          >
+            <span>{isDone ? "✓" : isCurrent ? statusIcon(step) : ""}</span>
+            <strong>{sessionStatusLabel(step)}</strong>
+            <small>{current !== null && index <= current ? `10:2${index}:0${index} AM` : ""}</small>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -1012,14 +1006,14 @@ function JoinPage() {
   );
 }
 
-function JoinSteps({ status }: { status: string }) {
+function JoinSteps({ status }: { status: SessionStatus }) {
   const steps = [
     ["Creating droplet", "created"],
     ["Assigning IP", "provisioning"],
     ["Creating DNS", "waiting_for_dns"],
     ["Warming services", "ready"],
     ["Final health check", "active"],
-  ];
+  ] as const satisfies readonly (readonly [string, SessionStatus])[];
   const active = Math.max(
     0,
     steps.findIndex(([, step]) => step === status),
@@ -1039,10 +1033,10 @@ function JoinSteps({ status }: { status: string }) {
   );
 }
 
-function joinWaitingTitle(status: string) {
-  return status === "waiting_for_dns"
-    ? "Waiting for DNS to propagate."
-    : "Waiting for provisioning to start.";
+function joinWaitingTitle(status: SessionStatus) {
+  if (status === "waiting_for_dns") return "Waiting for DNS to propagate.";
+  if (isProvisioningLikeStatus(status)) return "Waiting for provisioning to start.";
+  return "Waiting for your host.";
 }
 
 function JoinShell({ children }: { children: ReactNode }) {
@@ -1056,14 +1050,13 @@ function JoinShell({ children }: { children: ReactNode }) {
   );
 }
 
-function StatusBadge({ status, label }: { status: string; label?: string }) {
-  const meta = statusMeta[status] ?? { label: status, tone: "gray", icon: "spinner" as IconName };
+function StatusBadge({ status, label }: { status: SessionStatus; label?: string }) {
   return (
-    <span className={`status ${status.replaceAll("_", "-")} ${meta.tone}`}>
+    <span className={`status ${sessionStatusClassName(status)} ${sessionStatusTone(status)}`}>
       <b>
-        <Icon name={meta.icon} />
+        <Icon name={statusIcon(status)} />
       </b>
-      {label ?? meta.label}
+      {label ?? sessionStatusLabel(status)}
     </span>
   );
 }
@@ -1091,17 +1084,72 @@ function regionLabel(region: string) {
   );
 }
 
-function statusTone(status: string) {
-  return statusMeta[status]?.tone ?? "gray";
+function isAwaitingDownloadLikeStatus(status: SessionStatus): boolean {
+  switch (status) {
+    case "finalizing":
+    case "awaiting_manual_download":
+    case "teardown_pending":
+      return true;
+    case "created":
+    case "provisioning":
+    case "waiting_for_dns":
+    case "ready":
+    case "active":
+    case "tearing_down":
+    case "ended":
+    case "failed":
+      return false;
+    default:
+      return exhaustiveStatus(status);
+  }
 }
-function actionIcon(status: string): IconName {
-  return status === "active"
-    ? "square"
-    : status.includes("download") || status === "ended" || status === "finalizing"
-      ? "download"
-      : status.includes("teardown") || status === "failed"
-        ? "refresh"
-        : "play";
+function actionIcon(status: SessionStatus): IconName {
+  switch (status) {
+    case "active":
+      return "square";
+    case "finalizing":
+    case "awaiting_manual_download":
+    case "ended":
+      return "download";
+    case "teardown_pending":
+    case "tearing_down":
+    case "failed":
+      return "refresh";
+    case "created":
+    case "provisioning":
+    case "waiting_for_dns":
+    case "ready":
+      return "play";
+    default:
+      return exhaustiveStatus(status);
+  }
+}
+function statusIcon(status: SessionStatus): IconName {
+  switch (status) {
+    case "created":
+    case "provisioning":
+    case "waiting_for_dns":
+    case "finalizing":
+      return "spinner";
+    case "ready":
+    case "ended":
+      return "check";
+    case "active":
+      return "activity";
+    case "awaiting_manual_download":
+      return "download";
+    case "teardown_pending":
+      return "calendar";
+    case "tearing_down":
+      return "refresh";
+    case "failed":
+      return "triangle";
+    default:
+      return exhaustiveStatus(status);
+  }
+}
+function exhaustiveStatus(status: never): never {
+  throw new Error(`Unhandled session status: ${status}`);
 }
 function domainFor(session: Session) {
   return session.room_domain ?? `${session.slug}.cast.remote-tape.io`;

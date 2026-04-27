@@ -10,19 +10,6 @@ import type {
 const timestamp = "2026-04-25T10:00:00.000000000Z";
 const defaultControlPlaneURL = "http://127.0.0.1:5173";
 
-export type SessionStatus =
-  | "created"
-  | "provisioning"
-  | "waiting_for_dns"
-  | "ready"
-  | "active"
-  | "finalizing"
-  | "awaiting_manual_download"
-  | "teardown_pending"
-  | "tearing_down"
-  | "ended"
-  | "failed";
-
 export function makeSession(overrides: Partial<Session> = {}): Session {
   const id = overrides.id ?? `sess_${overrides.status ?? "created"}`;
   const slug = overrides.slug ?? id.replace(/^sess_/, "").replaceAll("_", "-");

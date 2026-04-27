@@ -1,19 +1,8 @@
-import { makeDetail, makeSession, type SessionStatus } from "./fixtures";
+import { makeDetail, makeSession } from "./fixtures";
+import { SESSION_STATUSES, type SessionStatus } from "../domain/sessionStatus";
 import type { Detail, Session } from "../types";
 
-export const lifecycleStatuses = [
-  "created",
-  "provisioning",
-  "waiting_for_dns",
-  "ready",
-  "active",
-  "finalizing",
-  "awaiting_manual_download",
-  "teardown_pending",
-  "tearing_down",
-  "ended",
-  "failed",
-] as const satisfies readonly SessionStatus[];
+export const lifecycleStatuses = SESSION_STATUSES;
 
 export type ScenarioName = "mixed" | "joinable" | "provisioning" | SessionStatus;
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SessionStatusSchema } from "./domain/sessionStatus";
 
 const nullableString = z.string().nullable();
 
@@ -6,7 +7,7 @@ export const SessionSchema = z.object({
   id: z.string(),
   slug: z.string(),
   title: z.string(),
-  status: z.string(),
+  status: SessionStatusSchema,
   droplet_id: nullableString,
   droplet_ip: nullableString,
   droplet_region: z.string(),
@@ -93,7 +94,7 @@ export const JoinResponseSchema = z.object({
   session: z.object({
     slug: z.string(),
     title: z.string(),
-    status: z.string(),
+    status: SessionStatusSchema,
   }),
   token: z.object({
     role: z.enum(["host", "guest"]),

@@ -1,8 +1,11 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { isAttentionStatus } from "./domain/sessionStatus";
+import { makeSession } from "./testing/fixtures";
 import { createControlMockApi } from "./testing/handlers";
 import { renderApp } from "./testing/renderApp";
+import { SessionSchema } from "./types";
 
 const mockApi = createControlMockApi();
 const server = setupServer(...mockApi.handlers);
@@ -21,6 +24,46 @@ describe("control app", () => {
 
     expect(await screen.findByRole("link", { name: "Joinable" })).toBeInTheDocument();
     expect(screen.getByText(/^room-[a-z2-7]{26}\.sessions\.localhost$/)).toBeInTheDocument();
+  });
+
+  it("renders multiple lifecycle statuses in the sessions list", async () => {
+    renderApp("/sessions?scenario=mixed");
+
+    expect(await screen.findByText("provisioning")).toBeInTheDocument();
+    expect(screen.getByText("waiting_for_dns")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.getByText("finalizing")).toBeInTheDocument();
+    expect(screen.getByText("awaiting_manual_download")).toBeInTheDocument();
+    expect(screen.getByText("teardown_pending")).toBeInTheDocument();
+    expect(screen.getAllByText("ended").length).toBeGreaterThan(0);
+    expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+
+  it("treats failed sessions as attention states", () => {
+    expect(isAttentionStatus("failed")).toBe(true);
+    expect(isAttentionStatus("ready")).toBe(false);
+  });
+
+  it("does not render failed as a completed lifecycle", async () => {
+    const { container } = renderApp("/sessions/sess_joinable_failed?scenario=failed");
+
+    expect(
+      await screen.findByText("Lifecycle stopped before successful completion.", { exact: false }),
+    ).toBeInTheDocument();
+    const completedSteps = Array.from(container.querySelectorAll(".life-step.done strong")).map(
+      (step) => step.textContent,
+    );
+
+    expect(completedSteps).not.toContain("ended");
+    expect(completedSteps).not.toContain("tearing_down");
+    expect(completedSteps).not.toContain("awaiting_manual_download");
+  });
+
+  it("rejects unknown session statuses at the API schema boundary", () => {
+    const payload = { ...makeSession(), status: "mystery_status" };
+
+    expect(SessionSchema.safeParse(payload).success).toBe(false);
   });
 
   it("keeps the selected mock scenario after navigating to session detail", async () => {
