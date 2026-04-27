@@ -1,6 +1,6 @@
 # remote-tape
 
-Free, self-owned remote podcast recorder.
+remote-tape is a self-hosted remote podcast recorder that spins up disposable recording rooms, captures each guest locally for reliability, and lets you download the final recordings without trusting a third-party SaaS.
 
 ## Control plane skeleton
 
