@@ -8,6 +8,9 @@ import (
 
 func TestDefaultLoad(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("REMOTE_TAPE_DEV_ADMIN_PASSWORD", "dev-password")
+	t.Setenv("REMOTE_TAPE_COOKIE_AUTH_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
 
 	cfg, err := Load()
 	if err != nil {
@@ -21,6 +24,18 @@ func TestDefaultLoad(t *testing.T) {
 	}
 	if cfg.Security.AdminCookieSessionDuration != 7*24*time.Hour {
 		t.Fatalf("AdminCookieSessionDuration = %v", cfg.Security.AdminCookieSessionDuration)
+	}
+}
+
+func TestProductionConfigWithoutPasswordHashIsInvalid(t *testing.T) {
+	cfg := validConfig()
+	cfg.General.Environment = EnvironmentProduction
+	cfg.Security.AdminPasswordHash = ""
+	cfg.Security.DevAdminPassword = ""
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "REMOTE_TAPE_ADMIN_PASSWORD_HASH") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -87,6 +102,9 @@ func validConfig() Config {
 			FinalizationTimeout: 15 * time.Minute,
 		},
 		Security: SecuritySettings{
+			AdminPasswordHash:          "$2a$10$Y9JdDULWeDYyi7vG2dSAf.KExPZ5RIZX.38y93Stah1DzqleV5E7.",
+			CookieAuthKey:              "0123456789abcdef0123456789abcdef",
+			CookieEncryptionKey:        "0123456789abcdef0123456789abcdef",
 			AdminCookieSessionDuration: 7 * 24 * time.Hour,
 			LoginRateLimitMaxAttempts:  5,
 			LoginRateLimitWindow:       15 * time.Minute,
@@ -114,6 +132,10 @@ func clearEnv(t *testing.T) {
 		"REMOTE_TAPE_IMAGE_ID",
 		"REMOTE_TAPE_HEALTH_CHECK_TIMEOUT",
 		"REMOTE_TAPE_FINALIZATION_TIMEOUT",
+		"REMOTE_TAPE_ADMIN_PASSWORD_HASH",
+		"REMOTE_TAPE_DEV_ADMIN_PASSWORD",
+		"REMOTE_TAPE_COOKIE_AUTH_KEY",
+		"REMOTE_TAPE_COOKIE_ENCRYPTION_KEY",
 		"REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION",
 		"REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW",
 		"REMOTE_TAPE_LOGIN_RATE_LIMIT_MAX_ATTEMPTS",

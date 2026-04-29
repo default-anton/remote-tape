@@ -90,6 +90,12 @@ export const CreateSessionResponseSchema = z.object({
   }),
 });
 
+export const AuthSessionSchema = z.object({
+  authenticated: z.boolean(),
+  subject: z.string(),
+  csrf_token: z.string(),
+});
+
 export const JoinResponseSchema = z.object({
   session: z.object({
     slug: z.string(),
@@ -106,6 +112,7 @@ export type AccessToken = z.infer<typeof AccessTokenSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type Detail = z.infer<typeof DetailSchema>;
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
+export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type JoinResponse = z.infer<typeof JoinResponseSchema>;
 
 export type CreateSessionInput = {

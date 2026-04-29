@@ -26,6 +26,13 @@ export function createControlMockApi(): ControlMockApi {
   }
 
   const handlers = [
+    http.get("/api/auth/session", () => {
+      return HttpResponse.json({
+        authenticated: true,
+        subject: "admin",
+        csrf_token: "test-csrf-token",
+      });
+    }),
     http.get("/api/sessions", ({ request }) => {
       return HttpResponse.json({ sessions: sessionsFor(request) });
     }),

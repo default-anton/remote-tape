@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/default-anton/remote-tape/internal/auth"
 	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
 	"github.com/default-anton/remote-tape/internal/session"
@@ -22,6 +23,7 @@ type Options struct {
 	DefaultRegion      string
 	DefaultDropletSize string
 	ImageID            string
+	Auth               *auth.Manager
 	controlUIFS        fs.FS
 }
 
@@ -32,6 +34,7 @@ type Server struct {
 	startedAt time.Time
 	options   Options
 	controlUI fs.FS
+	auth      *auth.Manager
 }
 
 func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
@@ -49,17 +52,21 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 		startedAt: time.Now().UTC(),
 		options:   opts,
 		controlUI: controlUIFS(opts),
+		auth:      opts.Auth,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.app)
 	mux.HandleFunc("/healthz", srv.healthz)
 	mux.HandleFunc("/readyz", srv.readyz)
+	mux.HandleFunc("/login", srv.login)
+	mux.HandleFunc("/logout", srv.logout)
+	mux.HandleFunc("/api/auth/session", srv.apiAuthSession)
 	mux.HandleFunc("/api/sessions", srv.apiSessions)
 	mux.HandleFunc("/api/sessions/", srv.apiSession)
 	mux.HandleFunc("/api/join/", srv.apiJoin)
 
-	return requestLogger(logger, mux)
+	return requestLogger(logger, srv.authMiddleware(srv.csrfMiddleware(mux)))
 }
 
 func defaultOptions() Options {
@@ -87,6 +94,9 @@ func mergeOptions(base Options, override Options) Options {
 	}
 	if override.ImageID != "" {
 		base.ImageID = override.ImageID
+	}
+	if override.Auth != nil {
+		base.Auth = override.Auth
 	}
 	if override.controlUIFS != nil {
 		base.controlUIFS = override.controlUIFS

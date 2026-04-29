@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  AuthSessionSchema,
   CreateSessionResponseSchema,
   DetailSchema,
   JoinResponseSchema,
@@ -7,10 +8,16 @@ import {
   type CreateSessionInput,
 } from "../types";
 
+let csrfToken: string | undefined;
+
 async function requestJSON<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (isUnsafeMethod(init?.method)) headers.set("X-CSRF-Token", await getCSRFToken());
+
   const response = await fetch(path, {
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
     ...init,
+    headers,
   });
 
   let payload: unknown;
@@ -25,6 +32,17 @@ async function requestJSON<T>(path: string, schema: z.ZodType<T>, init?: Request
     throw new Error(message);
   }
   return schema.parse(payload);
+}
+
+async function getCSRFToken() {
+  if (csrfToken) return csrfToken;
+  const session = await requestJSON("/api/auth/session", AuthSessionSchema);
+  csrfToken = session.csrf_token;
+  return csrfToken;
+}
+
+function isUnsafeMethod(method = "GET") {
+  return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(method.toUpperCase());
 }
 
 function errorMessage(payload: unknown): string | undefined {

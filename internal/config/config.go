@@ -41,6 +41,10 @@ type ProvisioningSettings struct {
 }
 
 type SecuritySettings struct {
+	AdminPasswordHash          SensitiveString
+	DevAdminPassword           SensitiveString
+	CookieAuthKey              SensitiveString
+	CookieEncryptionKey        SensitiveString
 	AdminCookieSessionDuration time.Duration
 	LoginRateLimitMaxAttempts  int
 	LoginRateLimitWindow       time.Duration
@@ -84,6 +88,10 @@ func Load() (Config, error) {
 			ImageID:            getEnv("REMOTE_TAPE_IMAGE_ID", "ubuntu-24-04-x64"),
 		},
 		Security: SecuritySettings{
+			AdminPasswordHash:    SensitiveString(os.Getenv("REMOTE_TAPE_ADMIN_PASSWORD_HASH")),
+			DevAdminPassword:     SensitiveString(os.Getenv("REMOTE_TAPE_DEV_ADMIN_PASSWORD")),
+			CookieAuthKey:        SensitiveString(os.Getenv("REMOTE_TAPE_COOKIE_AUTH_KEY")),
+			CookieEncryptionKey:  SensitiveString(os.Getenv("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY")),
 			DigitalOceanAPIToken: SensitiveString(os.Getenv("REMOTE_TAPE_DIGITALOCEAN_API_TOKEN")),
 			CloudflareAPIToken:   SensitiveString(os.Getenv("REMOTE_TAPE_CLOUDFLARE_API_TOKEN")),
 		},
@@ -173,6 +181,22 @@ func (c Config) Validate() error {
 	if c.Provisioning.FinalizationTimeout <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_FINALIZATION_TIMEOUT must be positive"))
 	}
+	if !c.Security.AdminPasswordHash.Set() && !(c.General.Environment == EnvironmentDevelopment && c.Security.DevAdminPassword.Set()) {
+		errs = append(errs, errors.New("REMOTE_TAPE_ADMIN_PASSWORD_HASH is required unless REMOTE_TAPE_DEV_ADMIN_PASSWORD is set in development"))
+	}
+	if c.Security.DevAdminPassword.Set() && c.General.Environment != EnvironmentDevelopment {
+		errs = append(errs, errors.New("REMOTE_TAPE_DEV_ADMIN_PASSWORD is allowed only when REMOTE_TAPE_ENV=development"))
+	}
+	if !c.Security.CookieAuthKey.Set() {
+		errs = append(errs, errors.New("REMOTE_TAPE_COOKIE_AUTH_KEY is required"))
+	} else if len(c.Security.CookieAuthKey) < 32 {
+		errs = append(errs, errors.New("REMOTE_TAPE_COOKIE_AUTH_KEY must be at least 32 bytes"))
+	}
+	if !c.Security.CookieEncryptionKey.Set() {
+		errs = append(errs, errors.New("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY is required"))
+	} else if l := len(c.Security.CookieEncryptionKey); l != 16 && l != 24 && l != 32 {
+		errs = append(errs, errors.New("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY must be 16, 24, or 32 bytes"))
+	}
 	if c.Security.AdminCookieSessionDuration <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION must be positive"))
 	}
@@ -219,6 +243,10 @@ func (c Config) LogAttrs() []any {
 		"image_id", c.Provisioning.ImageID,
 		"health_check_timeout", c.Provisioning.HealthCheckTimeout.String(),
 		"finalization_timeout", c.Provisioning.FinalizationTimeout.String(),
+		"admin_password_hash", c.Security.AdminPasswordHash.Redacted(),
+		"dev_admin_password", c.Security.DevAdminPassword.Redacted(),
+		"cookie_auth_key", c.Security.CookieAuthKey.Redacted(),
+		"cookie_encryption_key", c.Security.CookieEncryptionKey.Redacted(),
 		"admin_cookie_session_duration", c.Security.AdminCookieSessionDuration.String(),
 		"login_rate_limit_max_attempts", c.Security.LoginRateLimitMaxAttempts,
 		"login_rate_limit_window", c.Security.LoginRateLimitWindow.String(),

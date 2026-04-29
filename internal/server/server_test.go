@@ -13,7 +13,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/default-anton/remote-tape/internal/auth"
 	"github.com/default-anton/remote-tape/internal/database"
 )
 
@@ -103,9 +105,13 @@ func TestReadyzReportsDatabaseFailure(t *testing.T) {
 func TestCreateAndGetSessionAPI(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()
+	cookies, csrf := loginTestAdmin(t, handler)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"The Infra Podcast #313","slug":"the-infra-podcast-313"}`)))
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"The Infra Podcast #313","slug":"the-infra-podcast-313"}`))
+	addCookies(request, cookies)
+	request.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
@@ -149,7 +155,9 @@ func TestCreateAndGetSessionAPI(t *testing.T) {
 	}
 
 	get := httptest.NewRecorder()
-	handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/sessions/"+created.Session.ID, nil))
+	getReq := httptest.NewRequest(http.MethodGet, "/api/sessions/"+created.Session.ID, nil)
+	addCookies(getReq, cookies)
+	handler.ServeHTTP(get, getReq)
 	if get.Code != http.StatusOK {
 		t.Fatalf("get status = %d body = %s", get.Code, get.Body.String())
 	}
@@ -161,9 +169,13 @@ func TestCreateAndGetSessionAPI(t *testing.T) {
 func TestJoinAPIValidatesToken(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()
+	cookies, csrf := loginTestAdmin(t, handler)
 
 	create := httptest.NewRecorder()
-	handler.ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"Joinable","slug":"joinable"}`)))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"Joinable","slug":"joinable"}`))
+	addCookies(createReq, cookies)
+	createReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(create, createReq)
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create status = %d body = %s", create.Code, create.Body.String())
 	}
@@ -214,10 +226,13 @@ func TestControlAppServesBuiltIndex(t *testing.T) {
 		controlIndexFile: "<div id=\"root\"></div>",
 	})
 	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
 
 	for _, path := range []string{"/", "/sessions", "/sessions/sess_123", "/join/joinable?token=token", "/settings"} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		addCookies(request, cookies)
+		handler.ServeHTTP(response, request)
 		if response.Code != http.StatusOK {
 			t.Fatalf("GET %s status = %d body = %s", path, response.Code, response.Body.String())
 		}
@@ -237,9 +252,12 @@ func TestControlAppServesAssetsWithCacheHeaders(t *testing.T) {
 		"favicon.ico":          "icon",
 	})
 	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
 
 	asset := httptest.NewRecorder()
-	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/app.123abc.js", nil))
+	assetReq := httptest.NewRequest(http.MethodGet, "/assets/app.123abc.js", nil)
+	addCookies(assetReq, cookies)
+	handler.ServeHTTP(asset, assetReq)
 	if asset.Code != http.StatusOK {
 		t.Fatalf("asset status = %d body = %s", asset.Code, asset.Body.String())
 	}
@@ -248,7 +266,9 @@ func TestControlAppServesAssetsWithCacheHeaders(t *testing.T) {
 	}
 
 	favicon := httptest.NewRecorder()
-	handler.ServeHTTP(favicon, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	faviconReq := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	addCookies(faviconReq, cookies)
+	handler.ServeHTTP(favicon, faviconReq)
 	if favicon.Code != http.StatusOK {
 		t.Fatalf("favicon status = %d body = %s", favicon.Code, favicon.Body.String())
 	}
@@ -262,15 +282,20 @@ func TestControlAppDoesNotFallbackForAPIOrInvalidStaticPaths(t *testing.T) {
 		controlIndexFile: "<div id=\"root\"></div>",
 	})
 	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
 
 	api := httptest.NewRecorder()
-	handler.ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/unknown", nil))
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/unknown", nil)
+	addCookies(apiReq, cookies)
+	handler.ServeHTTP(api, apiReq)
 	if api.Code != http.StatusNotFound {
 		t.Fatalf("api status = %d body = %s", api.Code, api.Body.String())
 	}
 
 	asset := httptest.NewRecorder()
-	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/%2e%2e/index.control.html", nil))
+	assetReq := httptest.NewRequest(http.MethodGet, "/assets/%2e%2e/index.control.html", nil)
+	addCookies(assetReq, cookies)
+	handler.ServeHTTP(asset, assetReq)
 	if asset.Code != http.StatusNotFound {
 		t.Fatalf("asset status = %d body = %s", asset.Code, asset.Body.String())
 	}
@@ -279,14 +304,93 @@ func TestControlAppDoesNotFallbackForAPIOrInvalidStaticPaths(t *testing.T) {
 func TestControlAppReportsMissingBuild(t *testing.T) {
 	handler, db := newTestHandlerWithControlDist(t, nil)
 	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sessions", nil))
+	request := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
 	if !strings.Contains(response.Body.String(), "pnpm --dir web build:control") {
 		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+func TestDashboardAuthFlow(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d", unauthenticated.Code)
+	}
+
+	_, csrfCookie, csrf := csrfForTest(t, handler, nil)
+	badLogin := httptest.NewRecorder()
+	badReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("password=wrong&csrf_token="+csrf))
+	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badReq.AddCookie(csrfCookie)
+	handler.ServeHTTP(badLogin, badReq)
+	if badLogin.Code != http.StatusUnauthorized {
+		t.Fatalf("bad login status = %d", badLogin.Code)
+	}
+
+	cookies, csrf := loginTestAdmin(t, handler)
+	if len(cookies) == 0 {
+		t.Fatal("login did not set cookies")
+	}
+
+	authenticated := httptest.NewRecorder()
+	authReq := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	addCookies(authReq, cookies)
+	handler.ServeHTTP(authenticated, authReq)
+	if authenticated.Code != http.StatusOK {
+		t.Fatalf("authenticated status = %d body = %s", authenticated.Code, authenticated.Body.String())
+	}
+
+	missingCSRF := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"No CSRF","slug":"no-csrf"}`))
+	addCookies(missingReq, cookies)
+	handler.ServeHTTP(missingCSRF, missingReq)
+	if missingCSRF.Code != http.StatusForbidden {
+		t.Fatalf("missing csrf status = %d", missingCSRF.Code)
+	}
+
+	created := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"With CSRF","slug":"with-csrf"}`))
+	addCookies(createReq, cookies)
+	createReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(created, createReq)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", created.Code, created.Body.String())
+	}
+
+	logout := httptest.NewRecorder()
+	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	addCookies(logoutReq, cookies)
+	logoutReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(logout, logoutReq)
+	if logout.Code != http.StatusSeeOther {
+		t.Fatalf("logout status = %d", logout.Code)
+	}
+	cleared := responseCookies(logout)["remote_tape_session"]
+	if cleared == nil || cleared.MaxAge != -1 {
+		t.Fatalf("logout did not clear session cookie: %#v", cleared)
+	}
+
+	postLogout := httptest.NewRecorder()
+	postLogoutReq := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	for name, cookie := range cookies {
+		if name != "remote_tape_session" {
+			postLogoutReq.AddCookie(cookie)
+		}
+	}
+	handler.ServeHTTP(postLogout, postLogoutReq)
+	if postLogout.Code != http.StatusUnauthorized {
+		t.Fatalf("post logout status = %d", postLogout.Code)
 	}
 }
 
@@ -301,7 +405,7 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil))), db
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t)}), db
 }
 
 func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.Handler, *sql.DB) {
@@ -319,5 +423,82 @@ func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.
 	for name, content := range files {
 		controlUI[name] = &fstest.MapFile{Data: []byte(content)}
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{controlUIFS: controlUI}), db
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: controlUI}), db
+}
+
+func newTestAuth(t *testing.T) *auth.Manager {
+	t.Helper()
+	hash, err := auth.HashPassword("correct-password")
+	if err != nil {
+		t.Fatalf("HashPassword() error = %v", err)
+	}
+	manager, err := auth.NewManager(auth.Config{
+		PasswordHash:         hash,
+		CookieAuthKey:        []byte("0123456789abcdef0123456789abcdef"),
+		CookieEncryptionKey:  []byte("0123456789abcdef0123456789abcdef"),
+		SessionDuration:      time.Hour,
+		RateLimitMaxAttempts: 5,
+		RateLimitWindow:      15 * time.Minute,
+		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	return manager
+}
+
+func loginTestAdmin(t *testing.T, handler http.Handler) (map[string]*http.Cookie, string) {
+	t.Helper()
+	_, csrfCookie, csrf := csrfForTest(t, handler, nil)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("password=correct-password&csrf_token="+csrf))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(csrfCookie)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("login status = %d body = %s", response.Code, response.Body.String())
+	}
+	cookies := responseCookies(response)
+	if cookies["remote_tape_session"] == nil {
+		t.Fatalf("login missing session cookie: %#v", cookies)
+	}
+	_, csrfCookie, csrf = csrfForTest(t, handler, cookies)
+	cookies[csrfCookie.Name] = csrfCookie
+	return cookies, csrf
+}
+
+func csrfForTest(t *testing.T, handler http.Handler, cookies map[string]*http.Cookie) (map[string]*http.Cookie, *http.Cookie, string) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("auth session status = %d body = %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		CSRFToken string `json:"csrf_token"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode auth session: %v", err)
+	}
+	csrfCookie := responseCookies(response)["remote_tape_csrf"]
+	if csrfCookie == nil || body.CSRFToken == "" {
+		t.Fatalf("missing csrf cookie/token: cookie=%#v body=%s", csrfCookie, response.Body.String())
+	}
+	return responseCookies(response), csrfCookie, body.CSRFToken
+}
+
+func addCookies(request *http.Request, cookies map[string]*http.Cookie) {
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+}
+
+func responseCookies(response *httptest.ResponseRecorder) map[string]*http.Cookie {
+	cookies := map[string]*http.Cookie{}
+	for _, cookie := range response.Result().Cookies() {
+		cookies[cookie.Name] = cookie
+	}
+	return cookies
 }

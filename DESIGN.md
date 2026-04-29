@@ -577,8 +577,8 @@ Use Rails-style cookie auth with boring, proven primitives:
 
 - `GET /login`, `POST /login`, and `POST /logout`.
 - One admin identity: `admin`.
-- Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using Argon2id or bcrypt.
-- Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. Plaintext may be allowed only for local dev behind an explicit dev flag.
+- Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using bcrypt.
+- Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. `REMOTE_TAPE_DEV_ADMIN_PASSWORD` is allowed only when `REMOTE_TAPE_ENV=development`.
 - Use a signed and encrypted session cookie from a proven Go library; do not hand-roll cookie crypto.
 - Cookie contains only minimal session claims such as subject, issued-at, and expiry. Do not store secrets, tokens, or password hashes in the cookie.
 - Cookie flags in production: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and a bounded lifetime.
@@ -588,6 +588,7 @@ Use Rails-style cookie auth with boring, proven primitives:
 Protected by dashboard auth:
 
 ```http
+GET  /api/sessions
 POST /api/sessions
 GET  /api/sessions/:id
 POST /api/sessions/:id/start

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/default-anton/remote-tape/internal/auth"
 	"github.com/default-anton/remote-tape/internal/config"
 	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
@@ -33,6 +34,11 @@ func run(ctx context.Context) int {
 	}
 	logger = newLogger(cfg.General.LogLevel)
 	logger.InfoContext(ctx, "configuration loaded", cfg.LogAttrs()...)
+	authManager, err := newAuthManager(cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "auth initialization failed", "error", err)
+		return 1
+	}
 	if err := validateControlUI(cfg); err != nil {
 		logger.ErrorContext(ctx, "control UI unavailable", "error", err)
 		return 1
@@ -73,6 +79,7 @@ func run(ctx context.Context) int {
 			DefaultRegion:      cfg.Provisioning.DefaultRegion,
 			DefaultDropletSize: cfg.Provisioning.DefaultDropletSize,
 			ImageID:            cfg.Provisioning.ImageID,
+			Auth:               authManager,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -112,6 +119,27 @@ func run(ctx context.Context) int {
 		logger.InfoContext(ctx, "control plane stopped")
 		return 0
 	}
+}
+
+func newAuthManager(cfg config.Config, logger *slog.Logger) (*auth.Manager, error) {
+	passwordHash := string(cfg.Security.AdminPasswordHash)
+	if passwordHash == "" && cfg.General.Environment == config.EnvironmentDevelopment {
+		var err error
+		passwordHash, err = auth.HashPassword(string(cfg.Security.DevAdminPassword))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return auth.NewManager(auth.Config{
+		PasswordHash:         passwordHash,
+		CookieAuthKey:        []byte(cfg.Security.CookieAuthKey),
+		CookieEncryptionKey:  []byte(cfg.Security.CookieEncryptionKey),
+		SessionDuration:      cfg.Security.AdminCookieSessionDuration,
+		RateLimitMaxAttempts: cfg.Security.LoginRateLimitMaxAttempts,
+		RateLimitWindow:      cfg.Security.LoginRateLimitWindow,
+		SecureCookies:        cfg.General.Environment == config.EnvironmentProduction,
+		Logger:               logger,
+	})
 }
 
 func validateControlUI(cfg config.Config) error {
