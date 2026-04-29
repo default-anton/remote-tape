@@ -39,6 +39,16 @@ func TestProductionConfigWithoutPasswordHashIsInvalid(t *testing.T) {
 	}
 }
 
+func TestPlaintextPasswordHashIsInvalid(t *testing.T) {
+	cfg := validConfig()
+	cfg.Security.AdminPasswordHash = "password"
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "bcrypt") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
 func TestProductionValidation(t *testing.T) {
 	cfg := validConfig()
 	cfg.General.Environment = EnvironmentProduction

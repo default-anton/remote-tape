@@ -10,23 +10,25 @@ Install frontend dependencies once:
 pnpm --dir web install
 ```
 
-Run locally with the Vite dev server proxying API calls to the Go control plane:
+Run locally with direnv and the Vite dev server proxying API calls to the Go control plane:
 
 ```sh
+direnv allow
+
 # terminal 1
-REMOTE_TAPE_DATABASE_PATH=./data/control-plane.db go run ./cmd/control-plane
+go run ./cmd/control-plane
 
 # terminal 2
 pnpm --dir web dev
 ```
 
-Open <http://127.0.0.1:5173/sessions>. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
+Open <http://127.0.0.1:5173/login> and sign in with `REMOTE_TAPE_DEV_ADMIN_PASSWORD` from `.envrc`. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
 
 For the embedded control UI, build the frontend before building/running the Go binary. The control bundle is embedded from `internal/controlui/dist/control`; the room bundle is built separately under `web/dist/room` for session droplets.
 
 ```sh
 pnpm --dir web build
-REMOTE_TAPE_DATABASE_PATH=./data/control-plane.db go run ./cmd/control-plane
+go run ./cmd/control-plane
 ```
 
 Smoke check:
@@ -36,10 +38,18 @@ curl http://127.0.0.1:8080/healthz
 curl http://127.0.0.1:8080/readyz
 ```
 
-Create a session and open the placeholder dashboard/join flow:
+Create a session from the dashboard, or with an authenticated API call:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:8080/api/sessions \
+curl -sS -c .cookies http://127.0.0.1:8080/api/auth/session > /tmp/auth.json
+csrf=$(jq -r .csrf_token /tmp/auth.json)
+curl -sS -b .cookies -c .cookies -X POST http://127.0.0.1:8080/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode password="$REMOTE_TAPE_DEV_ADMIN_PASSWORD" \
+  --data-urlencode csrf_token="$csrf"
+csrf=$(curl -sS -b .cookies -c .cookies http://127.0.0.1:8080/api/auth/session | jq -r .csrf_token)
+curl -sS -b .cookies -X POST http://127.0.0.1:8080/api/sessions \
+  -H "X-CSRF-Token: $csrf" \
   -H 'Content-Type: application/json' \
   -d '{"title":"The Infra Podcast #313","slug":"the-infra-podcast-313"}'
 open http://127.0.0.1:5173/sessions
@@ -63,5 +73,5 @@ Key env groups match the future Settings UI:
 
 - General: `REMOTE_TAPE_ENV`, `REMOTE_TAPE_HTTP_ADDR`, `REMOTE_TAPE_DATABASE_PATH`, `REMOTE_TAPE_CONTROL_PLANE_URL`, `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`
 - Provisioning defaults: `REMOTE_TAPE_DEFAULT_DROPLET_SIZE`, `REMOTE_TAPE_DEFAULT_REGION`, `REMOTE_TAPE_IMAGE_ID`, `REMOTE_TAPE_HEALTH_CHECK_TIMEOUT`, `REMOTE_TAPE_FINALIZATION_TIMEOUT`
-- Security: `REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_MAX_ATTEMPTS`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW`, `REMOTE_TAPE_DIGITALOCEAN_API_TOKEN`, `REMOTE_TAPE_CLOUDFLARE_API_TOKEN`
+- Security: `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, dev-only `REMOTE_TAPE_DEV_ADMIN_PASSWORD`, `REMOTE_TAPE_COOKIE_AUTH_KEY`, `REMOTE_TAPE_COOKIE_ENCRYPTION_KEY`, `REMOTE_TAPE_ADMIN_COOKIE_SESSION_DURATION`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_MAX_ATTEMPTS`, `REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW`, `REMOTE_TAPE_DIGITALOCEAN_API_TOKEN`, `REMOTE_TAPE_CLOUDFLARE_API_TOKEN`
 - Cleanup policies: `REMOTE_TAPE_ORPHANED_DROPLET_TTL`, `REMOTE_TAPE_COMPLETED_SESSION_TTL`, `REMOTE_TAPE_FAILED_SESSION_TTL`, `REMOTE_TAPE_LOGS_RETENTION`

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -227,15 +226,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 			"status", status,
 			"bytes", recorder.bytes,
 			"duration_ms", time.Since(started).Milliseconds(),
-			"remote_addr", clientIP(r),
+			"remote_addr", auth.ClientIP(r),
 		)
 	})
-}
-
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

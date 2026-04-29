@@ -228,7 +228,7 @@ func TestControlAppServesBuiltIndex(t *testing.T) {
 	defer db.Close()
 	cookies, _ := loginTestAdmin(t, handler)
 
-	for _, path := range []string{"/", "/sessions", "/sessions/sess_123", "/join/joinable?token=token", "/settings"} {
+	for _, path := range []string{"/", "/sessions", "/sessions/sess_123", "/settings"} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		addCookies(request, cookies)
@@ -241,6 +241,22 @@ func TestControlAppServesBuiltIndex(t *testing.T) {
 		}
 		if !strings.Contains(response.Body.String(), "root") {
 			t.Fatalf("GET %s body = %s", path, response.Body.String())
+		}
+	}
+}
+
+func TestJoinAppIsPublic(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile:       "<div id=\"root\"></div>",
+		"assets/app.123abc.js": "console.log('remote-tape')",
+	})
+	defer db.Close()
+
+	for _, path := range []string{"/join/joinable?token=token", "/assets/app.123abc.js"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d body = %s", path, response.Code, response.Body.String())
 		}
 	}
 }

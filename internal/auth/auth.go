@@ -61,6 +61,9 @@ func NewManager(cfg Config) (*Manager, error) {
 	if strings.TrimSpace(cfg.PasswordHash) == "" {
 		return nil, errors.New("password hash is required")
 	}
+	if _, err := bcrypt.Cost([]byte(strings.TrimSpace(cfg.PasswordHash))); err != nil {
+		return nil, errors.New("password hash must be a bcrypt hash")
+	}
 	if len(cfg.CookieAuthKey) == 0 {
 		return nil, errors.New("cookie auth key is required")
 	}
@@ -210,9 +213,57 @@ func (m *Manager) CheckCSRF(r *http.Request) error {
 func ClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if trustedProxyHost(host) {
+		if forwarded := forwardedClientIP(r); forwarded != "" {
+			return forwarded
+		}
 	}
 	return host
+}
+
+func trustedProxyHost(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func forwardedClientIP(r *http.Request) string {
+	if value := r.Header.Get("Forwarded"); value != "" {
+		for _, elem := range strings.Split(value, ",") {
+			for _, part := range strings.Split(elem, ";") {
+				key, raw, ok := strings.Cut(strings.TrimSpace(part), "=")
+				if ok && strings.EqualFold(key, "for") {
+					if ip := cleanForwardedIP(raw); ip != "" {
+						return ip
+					}
+				}
+			}
+		}
+	}
+	for _, raw := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
+		if ip := cleanForwardedIP(raw); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func cleanForwardedIP(raw string) string {
+	value := strings.Trim(strings.TrimSpace(raw), `"`)
+	if strings.HasPrefix(value, "[") {
+		if host, _, err := net.SplitHostPort(value); err == nil {
+			value = strings.Trim(host, "[]")
+		}
+	} else if strings.Count(value, ":") == 1 {
+		if host, _, err := net.SplitHostPort(value); err == nil {
+			value = host
+		}
+	}
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 func randomToken(bytes int) (string, error) {

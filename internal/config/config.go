@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -183,6 +185,11 @@ func (c Config) Validate() error {
 	}
 	if !c.Security.AdminPasswordHash.Set() && !(c.General.Environment == EnvironmentDevelopment && c.Security.DevAdminPassword.Set()) {
 		errs = append(errs, errors.New("REMOTE_TAPE_ADMIN_PASSWORD_HASH is required unless REMOTE_TAPE_DEV_ADMIN_PASSWORD is set in development"))
+	}
+	if c.Security.AdminPasswordHash.Set() {
+		if _, err := bcrypt.Cost([]byte(strings.TrimSpace(string(c.Security.AdminPasswordHash)))); err != nil {
+			errs = append(errs, errors.New("REMOTE_TAPE_ADMIN_PASSWORD_HASH must be a bcrypt hash"))
+		}
 	}
 	if c.Security.DevAdminPassword.Set() && c.General.Environment != EnvironmentDevelopment {
 		errs = append(errs, errors.New("REMOTE_TAPE_DEV_ADMIN_PASSWORD is allowed only when REMOTE_TAPE_ENV=development"))

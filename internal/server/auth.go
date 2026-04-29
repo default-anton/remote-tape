@@ -136,7 +136,7 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/")
+	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/") || path == "/join" || strings.HasPrefix(path, "/join/") || isAssetPath(path)
 }
 
 func protectedPath(path string) bool {
