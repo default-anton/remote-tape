@@ -4,9 +4,18 @@ import {
   useQueryClient,
   type UseMutationOptions,
 } from "@tanstack/react-query";
-import { createSession, getSession, joinSession, listSessions } from "./client";
+import {
+  authSession,
+  createSession,
+  getSession,
+  joinSession,
+  listSessions,
+  login,
+  logout,
+} from "./client";
 import { shouldPollJoin, shouldPollSession } from "../domain/sessionStatus";
 import type {
+  AuthSession,
   CreateSessionInput,
   CreateSessionResponse,
   Detail,
@@ -23,6 +32,45 @@ type CreateSessionOptions = Pick<
   UseMutationOptions<CreateSessionResponse, Error, CreateSessionInput>,
   "onError" | "onSettled" | "onSuccess"
 >;
+
+type LoginOptions = Pick<UseMutationOptions<void, Error, string>, "onError" | "onSuccess">;
+type LogoutOptions = Pick<UseMutationOptions<void, Error, void>, "onError" | "onSuccess">;
+
+export function useAuthSession() {
+  return useQuery<AuthSession>({
+    queryKey: ["auth", "session"],
+    queryFn: authSession,
+    retry: false,
+  });
+}
+
+export function useLogin(options: LoginOptions = {}) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: login,
+    retry: false,
+    ...options,
+    onSuccess: async (result, variables, onMutateResult, context) => {
+      await queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+      await options.onSuccess?.(result, variables, onMutateResult, context);
+    },
+  });
+}
+
+export function useLogout(options: LogoutOptions = {}) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: logout,
+    retry: false,
+    ...options,
+    onSuccess: async (result, variables, onMutateResult, context) => {
+      queryClient.clear();
+      await options.onSuccess?.(result, variables, onMutateResult, context);
+    },
+  });
+}
 
 export function useSessions() {
   return useQuery({

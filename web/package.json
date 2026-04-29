@@ -6,12 +6,14 @@
     "dev": "vite --host 127.0.0.1 --mode control",
     "dev:mock": "vite --host 127.0.0.1 --mode mock",
     "dev:room": "vite --host 127.0.0.1 --mode room",
-    "build": "pnpm run build:control && pnpm run build:room",
+    "build": "pnpm run build:auth && pnpm run build:control && pnpm run build:join && pnpm run build:room",
+    "build:auth": "vite build --mode auth",
     "build:control": "vite build --mode control",
+    "build:join": "vite build --mode join",
     "build:room": "vite build --mode room",
     "test": "vitest run",
     "lint": "oxlint .",
-    "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts index.control.html index.room.html src",
+    "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts index.auth.html index.control.html index.join.html index.room.html src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -16,6 +16,7 @@ export type ControlMockApi = {
 
 export function createControlMockApi(): ControlMockApi {
   const createdSessions: CreatedSession[] = [];
+  let authenticated: boolean | null = null;
 
   function sessionsFor(request: Request) {
     return [...createdSessions.map((item) => item.session), ...selectedScenario(request).sessions];
@@ -26,12 +27,21 @@ export function createControlMockApi(): ControlMockApi {
   }
 
   const handlers = [
-    http.get("/api/auth/session", () => {
+    http.get("/api/auth/session", ({ request }) => {
+      const isAuthenticated = authenticatedFor(request, authenticated);
       return HttpResponse.json({
-        authenticated: true,
-        subject: "admin",
+        authenticated: isAuthenticated,
+        subject: isAuthenticated ? "admin" : "",
         csrf_token: "test-csrf-token",
       });
+    }),
+    http.post("/login", () => {
+      authenticated = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("/logout", () => {
+      authenticated = false;
+      return new HttpResponse(null, { status: 204 });
     }),
     http.get("/api/sessions", ({ request }) => {
       return HttpResponse.json({ sessions: sessionsFor(request) });
@@ -96,6 +106,7 @@ export function createControlMockApi(): ControlMockApi {
     handlers,
     reset() {
       createdSessions.length = 0;
+      authenticated = null;
     },
   };
 }
@@ -127,6 +138,29 @@ function selectedScenario(request: Request) {
 function browserScenarioName() {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("scenario");
+}
+
+function authenticatedFor(request: Request, authenticated: boolean | null) {
+  const mode = authMode(new URL(request.url)) ?? browserAuthMode();
+  if (mode === "authenticated") return true;
+  if (mode === "unauthenticated") return false;
+  if (authenticated !== null) return authenticated;
+  return !browserPathname().startsWith("/login");
+}
+
+function authMode(url: URL) {
+  const value = url.searchParams.get("auth");
+  return value === "authenticated" || value === "unauthenticated" ? value : null;
+}
+
+function browserAuthMode() {
+  if (typeof window === "undefined") return null;
+  return authMode(new URL(window.location.href));
+}
+
+function browserPathname() {
+  if (typeof window === "undefined") return "/";
+  return window.location.pathname;
 }
 
 function slugFromTitle(title: string) {

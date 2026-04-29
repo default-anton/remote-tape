@@ -237,6 +237,16 @@ button.ghost,
   margin: 0 5px;
   padding: 21px 2px 17px;
 }
+.operator-button {
+  background: transparent;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  color: var(--body);
+  font: inherit;
+  justify-content: stretch;
+  text-align: left;
+  width: calc(100% - 10px);
+}
 .operator span {
   align-items: center;
   background: var(--accent);

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -245,18 +246,33 @@ func TestControlAppServesBuiltIndex(t *testing.T) {
 	}
 }
 
-func TestJoinAppIsPublic(t *testing.T) {
-	handler, db := newTestHandlerWithControlDist(t, map[string]string{
-		controlIndexFile:       "<div id=\"root\"></div>",
-		"assets/app.123abc.js": "console.log('remote-tape')",
+func TestPublicAppsArePublicAndDashboardAssetsAreProtected(t *testing.T) {
+	handler, db := newTestHandlerWithControlAuthAndJoinDist(t, map[string]string{
+		controlIndexFile:       "<div id=\"control-root\"></div>",
+		"assets/app.123abc.js": "console.log('control')",
+	}, map[string]string{
+		authIndexFile:           "<div id=\"auth-root\"></div>",
+		"assets/auth.123abc.js": "console.log('auth')",
+	}, map[string]string{
+		joinIndexFile:           "<div id=\"join-root\"></div>",
+		"assets/join.123abc.js": "console.log('join')",
 	})
 	defer db.Close()
 
-	for _, path := range []string{"/join/joinable?token=token", "/assets/app.123abc.js"} {
+	for _, tc := range []struct {
+		path string
+		want int
+	}{
+		{path: "/login", want: http.StatusOK},
+		{path: "/auth-assets/assets/auth.123abc.js", want: http.StatusOK},
+		{path: "/join/joinable?token=token", want: http.StatusOK},
+		{path: "/join-assets/assets/join.123abc.js", want: http.StatusOK},
+		{path: "/assets/app.123abc.js", want: http.StatusSeeOther},
+	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		if response.Code != http.StatusOK {
-			t.Fatalf("GET %s status = %d body = %s", path, response.Code, response.Body.String())
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if response.Code != tc.want {
+			t.Fatalf("GET %s status = %d, want %d body = %s", tc.path, response.Code, tc.want, response.Body.String())
 		}
 	}
 }
@@ -426,6 +442,11 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 
 func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.Handler, *sql.DB) {
 	t.Helper()
+	return newTestHandlerWithControlAuthAndJoinDist(t, files, map[string]string{authIndexFile: "<div id=\"auth-root\"></div>"}, map[string]string{joinIndexFile: "<div id=\"join-root\"></div>"})
+}
+
+func newTestHandlerWithControlAuthAndJoinDist(t *testing.T, controlFiles map[string]string, authFiles map[string]string, joinFiles map[string]string) (http.Handler, *sql.DB) {
+	t.Helper()
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
 	if err != nil {
@@ -435,11 +456,15 @@ func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	controlUI := fstest.MapFS{}
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: testFS(controlFiles), authUIFS: testFS(authFiles), joinUIFS: testFS(joinFiles)}), db
+}
+
+func testFS(files map[string]string) fs.FS {
+	fileSystem := fstest.MapFS{}
 	for name, content := range files {
-		controlUI[name] = &fstest.MapFile{Data: []byte(content)}
+		fileSystem[name] = &fstest.MapFile{Data: []byte(content)}
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: controlUI}), db
+	return fileSystem
 }
 
 func newTestAuth(t *testing.T) *auth.Manager {

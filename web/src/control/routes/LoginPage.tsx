@@ -1,6 +1,27 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { useAuthSession, useLogin } from "../api/hooks";
 import { Logo } from "../components/Shell";
 
+function redirectToDashboard() {
+  window.location.href = "/sessions";
+}
+
 export function LoginPage() {
+  const auth = useAuthSession();
+  const login = useLogin({
+    onSuccess: redirectToDashboard,
+  });
+  const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    if (auth.data?.authenticated) redirectToDashboard();
+  }, [auth.data?.authenticated]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    login.mutate(password);
+  }
+
   return (
     <div className="login-page">
       <section className="login-brand">
@@ -33,15 +54,25 @@ export function LoginPage() {
         <div className="lock">▣</div>
         <h1>Admin sign in</h1>
         <p className="muted">Secure access to your remote-tape control plane.</p>
-        <label>
-          Username
-          <input autoFocus placeholder="Enter your username" />
-        </label>
-        <label>
-          Password
-          <input type="password" placeholder="Enter your password" />
-        </label>
-        <button className="primary">Sign in →</button>
+        <form onSubmit={submit}>
+          <label>
+            Password
+            <input
+              autoComplete="current-password"
+              autoFocus
+              disabled={login.isPending}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          {login.error ? <p role="alert">{login.error.message}</p> : null}
+          <button className="primary" disabled={login.isPending || auth.isLoading} type="submit">
+            {login.isPending ? "Signing in…" : "Sign in →"}
+          </button>
+        </form>
         <p className="info-note">
           🛡 Secure, cookie-based session
           <br />

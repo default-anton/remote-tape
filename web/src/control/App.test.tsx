@@ -71,6 +71,48 @@ describe("control app", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps mock login unauthenticated until POST /login", async () => {
+    renderApp("/login");
+
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+    await expect(fetchAuthSession()).resolves.toMatchObject({ authenticated: false });
+
+    await fetch("/login", { method: "POST" });
+    await expect(fetchAuthSession()).resolves.toMatchObject({
+      authenticated: true,
+      subject: "admin",
+    });
+
+    await fetch("/logout", { method: "POST" });
+    await expect(fetchAuthSession()).resolves.toMatchObject({ authenticated: false });
+  });
+
+  it("submits the React login form with CSRF and renders failures", async () => {
+    let csrfHeader: string | null = null;
+    let postedPassword: string | null = null;
+    server.use(
+      http.get("/api/auth/session", () =>
+        HttpResponse.json({ authenticated: false, subject: "", csrf_token: "login-csrf" }),
+      ),
+      http.post("/login", async ({ request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        postedPassword = (await request.formData()).get("password")?.toString() ?? null;
+        return HttpResponse.json({ ok: false, error: "invalid password" }, { status: 401 });
+      }),
+    );
+
+    renderApp("/login");
+
+    fireEvent.change(await screen.findByLabelText("Password"), {
+      target: { value: "dev-password" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Sign in →" }).closest("form")!);
+
+    await waitFor(() => expect(postedPassword).toBe("dev-password"));
+    expect(csrfHeader).toBe("login-csrf");
+    expect(await screen.findByRole("alert")).toHaveTextContent("invalid password");
+  });
+
   it("renders actionable API list errors", async () => {
     server.use(
       http.get("/api/sessions", () =>
@@ -423,6 +465,11 @@ describe("control app", () => {
     ).toBe(5_000);
   });
 });
+
+async function fetchAuthSession() {
+  const response = await fetch("/api/auth/session");
+  return response.json();
+}
 
 function statValue(label: string) {
   return within(screen.getByRole("group", { name: label })).getByText(/^\d+$/).textContent;

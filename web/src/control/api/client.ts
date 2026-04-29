@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { redirectToLogin, shouldRedirectUnauthorized } from "../authRedirect";
 import {
   AuthSessionSchema,
   CreateSessionResponseSchema,
@@ -11,32 +12,44 @@ import {
 let csrfToken: string | undefined;
 
 async function requestJSON<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (isUnsafeMethod(init?.method)) headers.set("X-CSRF-Token", await getCSRFToken());
-
-  const response = await fetch(path, {
-    ...init,
-    headers,
-  });
-
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+  const response = await fetchWithCSRF(path, init);
+  const payload = await responsePayload(response);
 
   if (!response.ok) {
+    if (shouldRedirectUnauthorized(path, response.status)) redirectToLogin();
     const message = errorMessage(payload) ?? `${response.status} ${response.statusText}`;
     throw new Error(message);
   }
   return schema.parse(payload);
 }
 
+async function fetchWithCSRF(path: string, init?: RequestInit, retried = false): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const unsafe = isUnsafeMethod(init?.method);
+  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (unsafe) headers.set("X-CSRF-Token", await getCSRFToken());
+
+  const response = await fetch(path, {
+    ...init,
+    headers,
+  });
+  if (response.status !== 403 || !unsafe || retried) return response;
+
+  csrfToken = undefined;
+  return fetchWithCSRF(path, init, true);
+}
+
+async function responsePayload(response: Response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 async function getCSRFToken() {
   if (csrfToken) return csrfToken;
-  const session = await requestJSON("/api/auth/session", AuthSessionSchema);
+  const session = await authSession();
   csrfToken = session.csrf_token;
   return csrfToken;
 }
@@ -53,6 +66,33 @@ function errorMessage(payload: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+export function authSession() {
+  return requestJSON("/api/auth/session", AuthSessionSchema);
+}
+
+export async function login(password: string) {
+  await postForm("/login", { password });
+}
+
+export async function logout() {
+  await postForm("/logout", {});
+  csrfToken = undefined;
+}
+
+async function postForm(path: string, fields: Record<string, string>) {
+  const body = new URLSearchParams(fields);
+  const response = await fetchWithCSRF(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (response.ok) return;
+
+  const payload = await responsePayload(response);
+  const message = errorMessage(payload) ?? `${response.status} ${response.statusText}`;
+  throw new Error(message);
 }
 
 export function listSessions() {

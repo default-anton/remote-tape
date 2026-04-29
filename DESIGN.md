@@ -575,7 +575,7 @@ Minimum viable:
 
 Use Rails-style cookie auth with boring, proven primitives:
 
-- `GET /login`, `POST /login`, and `POST /logout`.
+- `GET /login` serves the public React login bundle; `POST /login` and `POST /logout` set and clear the cookie.
 - One admin identity: `admin`.
 - Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using bcrypt.
 - Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. `REMOTE_TAPE_DEV_ADMIN_PASSWORD` is allowed only when `REMOTE_TAPE_ENV=development`.
@@ -583,11 +583,13 @@ Use Rails-style cookie auth with boring, proven primitives:
 - Cookie contains only minimal session claims such as subject, issued-at, and expiry. Do not store secrets, tokens, or password hashes in the cookie.
 - Cookie flags in production: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and a bounded lifetime.
 - Protect all browser-initiated unsafe methods with CSRF tokens.
-- Rate-limit login attempts per IP, with structured logs for failures.
+- Rate-limit login attempts per IP, with structured logs for failures. Only trust proxy-overwritten `X-Forwarded-For` from loopback; ignore client-supplied `Forwarded` headers.
 
 Protected by dashboard auth:
 
 ```http
+GET  /
+GET  /assets/*
 GET  /api/sessions
 POST /api/sessions
 GET  /api/sessions/:id
@@ -600,6 +602,7 @@ POST /api/sessions/:id/retry
 CSRF-protected because they use cookie auth:
 
 ```http
+POST /login
 POST /api/sessions
 POST /api/sessions/:id/start
 POST /api/sessions/:id/end
@@ -610,6 +613,7 @@ POST /logout
 
 Join links and session-droplet callbacks are separate auth boundaries:
 
+- `GET /login` and `GET /join/:slug?token=...` use public UI bundles separate from the protected dashboard bundle.
 - `GET /join/:slug?token=...` validates against `session_access_tokens`, rejects revoked tokens, updates `last_used_at`, and does not require dashboard login.
 - `/internal/sessions/:id/...` validates against `sessions.machine_token_hash` and does not use dashboard cookies or CSRF.
 
@@ -790,7 +794,7 @@ Create session -> see session row, host/guest join links, and timeline -> open j
 
 ### Slice 3: dashboard auth
 
-- `GET /login`; align with [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
+- React login route at `GET /login`; align with [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
 - `POST /login`
 - `POST /logout`
 - single-admin cookie auth

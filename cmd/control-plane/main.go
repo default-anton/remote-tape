@@ -144,7 +144,7 @@ func newAuthManager(cfg config.Config, logger *slog.Logger) (*auth.Manager, erro
 
 func validateControlUI(cfg config.Config) error {
 	if cfg.General.Environment == config.EnvironmentProduction && !controlui.Built() {
-		return errors.New("embedded control UI is not built; run pnpm --dir web build:control before building the Go binary")
+		return errors.New("embedded web UI is not built; run pnpm --dir web build before building the Go binary")
 	}
 	return nil
 }

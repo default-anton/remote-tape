@@ -1,36 +1,14 @@
 package server
 
 import (
-	"html/template"
 	"net/http"
 	"strings"
 )
 
-var loginTemplate = template.Must(template.New("login").Parse(`<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · remote-tape</title></head>
-<body>
-  <main>
-    <h1>Sign in</h1>
-    {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
-    <form method="post" action="/login">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <label>Password <input name="password" type="password" autocomplete="current-password" autofocus required></label>
-      <button type="submit">Sign in</button>
-    </form>
-  </main>
-</body>
-</html>`))
-
-type loginPageData struct {
-	CSRFToken string
-	Error     string
-}
-
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
-	case http.MethodGet:
-		s.renderLogin(w, r, "")
+	case http.MethodGet, http.MethodHead:
+		s.serveAuthIndex(w, r)
 	case http.MethodPost:
 		if s.auth == nil {
 			writeError(w, http.StatusServiceUnavailable, "authentication unavailable")
@@ -46,7 +24,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
+		writeMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost)
 	}
 }
 
@@ -79,20 +57,6 @@ func (s *Server) apiAuthSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "subject": sess.Subject, "csrf_token": csrf})
-}
-
-func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, message string) {
-	csrf := ""
-	if s.auth != nil {
-		var err error
-		csrf, err = s.auth.CSRFToken(w, r)
-		if err != nil {
-			writeOperationError(w, http.StatusInternalServerError, "issue csrf", err)
-			return
-		}
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = loginTemplate.Execute(w, loginPageData{CSRFToken: csrf, Error: message})
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
@@ -136,7 +100,7 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/") || path == "/join" || strings.HasPrefix(path, "/join/") || isAssetPath(path)
+	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/") || path == "/join" || strings.HasPrefix(path, "/join/") || strings.HasPrefix(path, "/auth-assets/") || strings.HasPrefix(path, "/join-assets/")
 }
 
 func protectedPath(path string) bool {

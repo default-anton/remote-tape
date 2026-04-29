@@ -24,6 +24,8 @@ type Options struct {
 	ImageID            string
 	Auth               *auth.Manager
 	controlUIFS        fs.FS
+	authUIFS           fs.FS
+	joinUIFS           fs.FS
 }
 
 type Server struct {
@@ -33,6 +35,8 @@ type Server struct {
 	startedAt time.Time
 	options   Options
 	controlUI fs.FS
+	authUI    fs.FS
+	joinUI    fs.FS
 	auth      *auth.Manager
 }
 
@@ -51,6 +55,8 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 		startedAt: time.Now().UTC(),
 		options:   opts,
 		controlUI: controlUIFS(opts),
+		authUI:    authUIFS(opts),
+		joinUI:    joinUIFS(opts),
 		auth:      opts.Auth,
 	}
 
@@ -100,6 +106,12 @@ func mergeOptions(base Options, override Options) Options {
 	if override.controlUIFS != nil {
 		base.controlUIFS = override.controlUIFS
 	}
+	if override.authUIFS != nil {
+		base.authUIFS = override.authUIFS
+	}
+	if override.joinUIFS != nil {
+		base.joinUIFS = override.joinUIFS
+	}
 	return base
 }
 
@@ -108,6 +120,20 @@ func controlUIFS(opts Options) fs.FS {
 		return opts.controlUIFS
 	}
 	return controlui.FS()
+}
+
+func authUIFS(opts Options) fs.FS {
+	if opts.authUIFS != nil {
+		return opts.authUIFS
+	}
+	return controlui.AuthFS()
+}
+
+func joinUIFS(opts Options) fs.FS {
+	if opts.joinUIFS != nil {
+		return opts.joinUIFS
+	}
+	return controlui.JoinFS()
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

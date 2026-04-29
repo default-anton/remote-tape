@@ -2,10 +2,10 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router";
-import { App } from "./App";
-import { startMockApiIfNeeded } from "./testing/mockMode";
-import "./styles.css";
-import "./styles-detail.css";
+import { JoinApp } from "./App";
+import { startMockApiIfNeeded } from "../control/testing/mockMode";
+import "../control/styles.css";
+import "../control/styles-detail.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +29,7 @@ async function bootstrap() {
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <App />
+          <JoinApp />
         </BrowserRouter>
       </QueryClientProvider>
     </React.StrictMode>,

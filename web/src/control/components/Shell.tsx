@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { Link } from "react-router";
+import { useAuthSession, useLogout } from "../api/hooks";
 
 type NavIcon = "activity" | "diagnostics" | "server" | "settings" | "chevronDown" | "chevronRight";
 
@@ -46,6 +47,13 @@ export function Shell({
   active: "sessions" | "diagnostics" | "settings";
   children: ReactNode;
 }) {
+  const auth = useAuthSession();
+  const logout = useLogout({
+    onSuccess: () => {
+      window.location.href = "/login";
+    },
+  });
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -76,17 +84,22 @@ export function Shell({
               <Icon name="chevronRight" />
             </b>
           </div>
-          <div className="operator">
+          <button
+            className="operator operator-button"
+            disabled={logout.isPending}
+            onClick={() => logout.mutate()}
+            type="button"
+          >
             <span>OP</span>
             <p>
-              operator
+              {auth.data?.subject || "operator"}
               <br />
-              <small>Administrator</small>
+              <small>{logout.isPending ? "Signing out…" : "Sign out"}</small>
             </p>
             <b>
               <Icon name="chevronDown" />
             </b>
-          </div>
+          </button>
           <footer>
             remote-tape v1.6.2
             <br />
