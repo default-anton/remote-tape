@@ -109,16 +109,23 @@ func HashPassword(password string) (string, error) {
 
 func (m *Manager) Login(w http.ResponseWriter, r *http.Request, password string) error {
 	ip := ClientIP(r)
-	if m.limiter.Limited(ip, m.now()) {
+	if !m.limiter.BeginAttempt(ip, m.now()) {
 		m.logger.WarnContext(r.Context(), "login failed", "event", "auth.login_failed", "ip", ip, "reason", "rate_limited")
 		return ErrInvalidPassword
 	}
-	if err := bcrypt.CompareHashAndPassword(m.passwordHash, []byte(password)); err != nil {
+	success := false
+	defer func() {
+		if success {
+			m.limiter.Reset(ip)
+			return
+		}
 		m.limiter.RecordFailure(ip, m.now())
+	}()
+	if err := bcrypt.CompareHashAndPassword(m.passwordHash, []byte(password)); err != nil {
 		m.logger.WarnContext(r.Context(), "login failed", "event", "auth.login_failed", "ip", ip, "reason", "invalid_password")
 		return ErrInvalidPassword
 	}
-	m.limiter.Reset(ip)
+	success = true
 	m.SetSessionCookie(w, SubjectAdmin)
 	return nil
 }
@@ -229,22 +236,16 @@ func trustedProxyHost(host string) bool {
 }
 
 func forwardedClientIP(r *http.Request) string {
-	if value := r.Header.Get("Forwarded"); value != "" {
-		for _, elem := range strings.Split(value, ",") {
-			for _, part := range strings.Split(elem, ";") {
-				key, raw, ok := strings.Cut(strings.TrimSpace(part), "=")
-				if ok && strings.EqualFold(key, "for") {
-					if ip := cleanForwardedIP(raw); ip != "" {
-						return ip
-					}
-				}
-			}
+	return closestUntrustedForwardedIP(strings.Split(r.Header.Get("X-Forwarded-For"), ","))
+}
+
+func closestUntrustedForwardedIP(values []string) string {
+	for i := len(values) - 1; i >= 0; i-- {
+		ip := cleanForwardedIP(values[i])
+		if ip == "" || trustedProxyHost(ip) {
+			continue
 		}
-	}
-	for _, raw := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
-		if ip := cleanForwardedIP(raw); ip != "" {
-			return ip
-		}
+		return ip
 	}
 	return ""
 }
