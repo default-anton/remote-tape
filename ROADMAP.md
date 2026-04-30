@@ -49,24 +49,24 @@ Unauthenticated API call fails -> login succeeds -> create session succeeds -> l
 
 ## Current slice
 
-### Slice 4: reconciler + fake provisioner
+### Slice 4: reconciler harness + lifecycle attempt visibility
 
-Implement the state-driven in-process reconciler and a `Provisioner` interface with an in-memory/fake implementation.
+Implement the state-driven in-process reconciler without fake infrastructure. This slice proves the control-plane loop can safely pick up desired state, apply conditional lifecycle transitions, persist attempts/errors/events, and expose progress in the UI/mock.
 
-- reconciler loop
-- idempotent session transitions
-- persisted `last_error`
-- retry counters
-- fake droplet ID/IP/room URL/DNS record ID
-- fake health readiness
+- reconciler `Run(ctx)` loop and testable `Step(ctx)`
+- bounded candidate selection for `created` sessions, ordered by `updated_at asc, id asc`
+- conditional `created -> provisioning` transition
+- persisted `last_error`, `last_error_at`, and `last_error_phase='provisioning'` for provisioning failures
+- `provision_attempts` increments and lifecycle events appended in the same transaction as state updates
+- deterministic mock/UI coverage for queued, provisioning, and provisioning-failed states
 
 Demo:
 
 ```txt
-Create session -> reconciler advances it -> fake provisioner marks ready -> join redirects to fake room URL
+Create session -> reconciler advances it to provisioning -> timeline shows the provisioning attempt -> failures persist visibly
 ```
 
-This gives fast tests before touching DigitalOcean.
+Do not fake droplet ID/IP/DNS/health/readiness/redirects in this slice. Real provisioning output begins in Slice 5.
 
 ## Upcoming slices
 
@@ -167,7 +167,7 @@ Confirm download -> DNS deleted -> droplet destroyed -> session marked ended -> 
 - HTTP handler tests for session, auth, join, and callback endpoints
 - DB migration tests
 - reconciler state-machine tests
-- fake provisioner tests
+- reconciler transition/idempotency tests
 - token hashing/auth/revocation tests
 - idempotency/adoption tests
 - finalization and teardown safety tests
