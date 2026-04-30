@@ -6,11 +6,13 @@ Simplest viable control plane:
 
 > One small persistent DigitalOcean droplet running one Go service, one SQLite database, one background worker loop, and one Caddy/Nginx reverse proxy. No Kubernetes, no queue, no separate scheduler, no distributed control plane.
 
-## Recommendation
+Code is the source of truth for implemented schema, routes, config, middleware, package choices, and UI wiring. This document should hold durable architecture, invariants, and contracts that are bigger than any one implementation slice.
 
-### Control-plane responsibilities
+## System boundaries
 
-The control plane should own only:
+### Control plane
+
+The control plane owns:
 
 1. User/dashboard app
 2. Session records and join links
@@ -19,9 +21,19 @@ The control plane should own only:
 5. Redirecting guests to the correct session droplet
 6. Cleanup/retry/reconciliation
 
-It should **not** handle recording traffic, LiveKit traffic, chunk uploads, TURN, or media paths. Those belong on the per-session droplet.
+It must **not** handle recording traffic, LiveKit traffic, chunk uploads, TURN, or media paths. Those belong on the per-session droplet.
 
----
+### Session runtime
+
+Each recording session gets a disposable per-session droplet that owns:
+
+1. Room app
+2. LiveKit/TURN runtime
+3. Recording ingest server
+4. Local session data
+5. Upload/finalization of recordings
+
+Do not destroy a session droplet until upload finalization is safe and recordings have been manually downloaded.
 
 ## High-level architecture
 
@@ -34,7 +46,7 @@ control.remote-tape.example
   |
   | Go control-plane service
   | SQLite
-  | background reconciler
+  | in-process reconciler
   |
   +--> DigitalOcean API
   +--> Cloudflare API
@@ -43,7 +55,7 @@ control.remote-tape.example
 session droplet
   |
   +--> room app
-  +--> LiveKit
+  +--> LiveKit/TURN
   +--> recording ingest server
   +--> local disk/object upload/finalization
 ```
@@ -63,167 +75,13 @@ reverse proxy:
   Caddy or Nginx
 ```
 
----
+## Control-plane persistence
 
-## Core model
-
-Use three control-plane tables at the start:
-
-1. `sessions` — current desired/observed state for reconciliation and UI.
-2. `session_access_tokens` — host/guest join-link tokens.
-3. `session_events` — append-only audit trail.
+The control-plane database stores desired/observed session state, access tokens, and an append-only event timeline. Implemented schema and indexes live in `internal/database/migrate.go`; repository behavior lives in `internal/session`.
 
 Do not store recording chunks, media manifests, or upload state in the control-plane database. Those belong on the per-session droplet.
 
-Use SQLite `strict` tables and enforce fixed-width UTC text timestamps with `check` constraints: `2006-01-02T15:04:05.000000000Z`. This keeps values readable and lexically sortable.
-
-### `sessions`
-
-```sql
-sessions (
-  id text primary key,
-  slug text unique not null,
-  title text not null,
-
-  status text not null check (
-    status in (
-      'created',
-      'provisioning',
-      'waiting_for_dns',
-      'ready',
-      'active',
-      'finalizing',
-      'awaiting_manual_download',
-      'teardown_pending',
-      'tearing_down',
-      'ended',
-      'failed'
-    )
-  ),
-
-  machine_token_hash text,
-
-  droplet_id text,
-  droplet_ip text,
-  droplet_region text not null,
-  droplet_size text not null,
-  image_id text not null,
-
-  room_domain text unique,
-  dns_record_id text,
-  livekit_url text,
-
-  recording_download_url text,
-  finalization_summary_json text,
-
-  created_at text not null,
-  updated_at text not null,
-  ready_at text,
-  active_at text,
-  finalization_started_at text,
-  finalized_at text,
-  last_heartbeat_at text,
-  download_confirmed_at text,
-  download_confirmed_by text,
-  ended_at text,
-  expires_at text,
-
-  last_error text,
-  last_error_at text,
-  last_error_phase text,
-
-  provision_attempts integer not null default 0,
-  dns_attempts integer not null default 0,
-  health_attempts integer not null default 0,
-  teardown_attempts integer not null default 0
-)
-```
-
-Keep status coarse. Do not add separate statuses for every failure mode. Persist detailed failure context in `last_error`, `last_error_at`, `last_error_phase`, and `session_events`.
-
-### `session_access_tokens`
-
-Join-link tokens are separate from machine callback auth. `sessions.machine_token_hash` is null when a session is first created; provisioning issues the machine token immediately before configuring a new session droplet, stores only the hash, and passes plaintext only into droplet boot config.
-
-```sql
-session_access_tokens (
-  id text primary key,
-  session_id text not null,
-  role text not null check (role in ('host', 'guest')),
-  label text,
-  token_hash text not null unique,
-  created_at text not null,
-  last_used_at text,
-  revoked_at text,
-
-  foreign key (session_id) references sessions(id)
-)
-```
-
-Generate at least one host token and one guest token when creating a session. This keeps v1 simple while allowing multiple guests, token rotation, and revocation without changing the schema.
-
-### `session_events`
-
-Append-only audit trail.
-
-```sql
-session_events (
-  id integer primary key autoincrement,
-  session_id text not null,
-  type text not null,
-  message text,
-  metadata_json text,
-  created_at text not null,
-
-  foreign key (session_id) references sessions(id)
-)
-```
-
-Examples:
-
-```txt
-session.created
-session.machine_token_issued
-session.machine_token_rotated
-droplet.create.started
-droplet.create.succeeded
-dns.create.started
-dns.create.succeeded
-session.ready
-session.finalization.started
-session.downloads_ready
-session.download_confirmed
-droplet.destroy.started
-droplet.destroy.succeeded
-```
-
-This matters because droplet lifecycle bugs are otherwise painful to debug.
-
-Initial indexes:
-
-```sql
-create index idx_sessions_status on sessions(status);
-create index idx_sessions_updated_at on sessions(updated_at);
-create index idx_sessions_droplet_id on sessions(droplet_id);
-create index idx_sessions_room_domain on sessions(room_domain);
-
-create index idx_session_access_tokens_session_id
-  on session_access_tokens(session_id);
-
-create index idx_session_events_session_id_id
-  on session_events(session_id, id);
-```
-
-SQLite connection defaults:
-
-```sql
-pragma foreign_keys = on;
-pragma journal_mode = wal;
-pragma busy_timeout = 5000;
-pragma synchronous = normal;
-```
-
----
+Keep lifecycle status coarse. Do not add separate statuses for every failure mode. Persist detailed failure context and timeline events instead.
 
 ## Session lifecycle
 
@@ -240,90 +98,37 @@ created
   -> ended
 ```
 
-### Important rule
+`failed` is an explicit attention state. It should not advance without host/admin retry or intervention.
 
-The database is the source of truth for desired state.
+The database is the source of truth for desired state. DigitalOcean and Cloudflare are external systems that the reconciler repeatedly nudges toward the desired state.
 
-DigitalOcean and Cloudflare are external systems that the reconciler repeatedly nudges toward the desired state.
+Do **not** build lifecycle progress as one long fragile request handler.
 
-Do **not** build this as one long fragile request handler.
+## API and auth boundaries
 
----
+Implemented HTTP routing and middleware live in `internal/server`. This document only defines the durable boundaries:
 
-## API shape
+- Dashboard/session-management APIs require admin dashboard auth.
+- Join links are public control-plane URLs authenticated by unguessable per-session access tokens.
+- Session-droplet callbacks are authenticated by per-session machine tokens.
+- Join links and session-droplet callbacks must not use dashboard cookies as their auth boundary.
+- Browser-initiated unsafe dashboard actions require CSRF protection.
+- Raw host/guest join tokens are returned only at creation/rotation time; only hashes are stored afterward.
+- Machine tokens are issued during provisioning, stored only as hashes, and passed in plaintext only to the target session droplet boot config.
 
-### Dashboard/session management
+Avoid OAuth, user accounts, teams, and email magic links until the product actually needs them.
 
-```http
-POST /api/sessions
-GET  /api/sessions/:id
-POST /api/sessions/:id/start
-POST /api/sessions/:id/end
-POST /api/sessions/:id/confirm-download
-POST /api/sessions/:id/retry
-```
+## Provisioning and reconciliation
 
-`POST /api/sessions` returns raw host/guest join tokens only at creation time. Store only hashes afterward; token rotation creates new `session_access_tokens` rows and revokes old ones.
+When a host creates a session, the control plane should persist the desired session and return immediately. A background reconciler performs provisioning and recovery.
 
-`confirm-download` is host/admin-only. It is allowed only after the session droplet has finalized uploads/manifests, records `download_confirmed_at`, and transitions the session to `teardown_pending`.
+Reconciliation must be:
 
-### Join links
-
-```http
-GET /join/:slug?token=...
-```
-
-Behavior:
-
-1. Validate slug/token against `session_access_tokens`; reject revoked tokens and record `last_used_at` on success.
-2. Load session.
-3. If `ready`, redirect to session droplet:
-   ```http
-   302 https://room-abc123.sessions.example.com/?token=...
-   ```
-4. If still provisioning, show waiting page with polling.
-5. If failed, show useful error and allow host retry.
-6. If ended, show ended page.
-
-### Internal callback from session droplet
-
-```http
-POST /internal/sessions/:id/ready
-POST /internal/sessions/:id/active
-POST /internal/sessions/:id/finalized
-POST /internal/sessions/:id/heartbeat
-```
-
-Require a per-session machine token issued by the control plane during provisioning, stored only as `sessions.machine_token_hash`, and injected into cloud-init as plaintext only on the session droplet.
-
----
-
-## Provisioning flow
-
-When a host creates or starts a session:
-
-```txt
-POST /api/sessions
-  -> insert session(status=created, title, slug, droplet_region, droplet_size, image_id, timestamps)
-  -> insert initial host and guest session_access_tokens
-  -> return immediately
-```
-
-Background reconciler sees `created`:
-
-```txt
-created
-  -> issue machine token for provisioning and store only its hash
-  -> create DO droplet with idempotency key/session tag and plaintext machine token in cloud-init
-  -> save droplet_id/ip
-  -> create Cloudflare DNS record
-  -> save dns_record_id
-  -> status=waiting_for_dns
-  -> poll health endpoint
-  -> status=ready
-```
-
-### Idempotency
+- state-driven
+- idempotent
+- observable through events/logs
+- safe after process crashes
+- safe after partial DigitalOcean or Cloudflare failures
 
 Tag every session droplet:
 
@@ -332,52 +137,31 @@ remote-tape
 remote-tape-session:<session_id>
 ```
 
-If DB says no droplet but DO already has a droplet with that tag, adopt it.
+If the database says no droplet exists but DigitalOcean already has one with the session tag, adopt it.
 
 Machine-token retry rule: rotate only before a droplet is assigned or adopted. Once a droplet exists, keep its callback token valid unless the droplet is explicitly reconfigured.
 
 That single rule prevents most leaked-droplet failure modes.
 
----
+Keep the reconciler in-process for now. Do not add Redis, BullMQ, Celery, Temporal, or a separate worker service yet.
 
 ## Droplet boot contract
 
-Use a prebuilt snapshot/image if possible.
+Use a prebuilt snapshot/image if possible. Cloud-init should only write config, not install the world.
 
-The session droplet should boot with:
+The session droplet image should contain:
 
 ```txt
-LiveKit 1.11.0
+LiveKit
 recording server
 room web app
 Caddy/Nginx
 systemd units
 ```
 
-Cloud-init should only write config, not install the world.
+Boot config must include enough information for the droplet to identify the session, serve the room domain, connect back to the control plane, and authenticate callbacks with its machine token.
 
-Example injected config:
-
-```json
-{
-  "session_id": "sess_123",
-  "room_domain": "room-abc123.sessions.example.com",
-  "control_plane_url": "https://control.example.com",
-  "machine_token": "secret",
-  "livekit_keys": "...",
-  "recording_config": "..."
-}
-```
-
-Session droplet signals readiness:
-
-```http
-POST /internal/sessions/sess_123/ready
-```
-
-Only then should the control plane mark the room as ready.
-
----
+The session droplet signals readiness through an authenticated control-plane callback. Only then should the control plane mark the room as ready or redirect users to it.
 
 ## Browser recording expectations
 
@@ -415,21 +199,19 @@ Capture rules:
 - Prefer stable capture and upload over max bitrate.
 - Treat browser media constraints as requests, not guarantees; verify actual track/settings when possible.
 
----
+## Cleanup and manual-download safety
 
-## Cleanup flow
-
-Ending a session should not immediately destroy the droplet.
+Ending a session must not immediately destroy the droplet.
 
 Correct sequence:
 
 ```txt
 host ends session
-  -> control plane marks session finalizing and records finalization_started_at
+  -> control plane marks session finalizing
   -> session droplet finishes uploads/manifests
-  -> session droplet calls /internal/sessions/:id/finalized with download URL/summary
-  -> control plane records finalized_at, recording_download_url, finalization_summary_json, and marks awaiting_manual_download
-  -> host downloads audio/video recordings from the session server
+  -> session droplet reports finalized recordings
+  -> control plane marks awaiting_manual_download
+  -> host downloads recordings from the session server
   -> host explicitly confirms download in the dashboard
   -> control plane marks teardown_pending
   -> reconciler deletes DNS
@@ -437,11 +219,12 @@ host ends session
   -> session ended
 ```
 
+Finalization means recordings are safely prepared. It does not mean the droplet is safe to destroy. Do not silently destroy a droplet that may still have unfinalized or undownloaded recordings.
+
 Have hard fallback policies:
 
 ```txt
 if finalizing > N hours:
-  mark failed_finalization
   require manual/admin retry or forced teardown
 
 if awaiting_manual_download > N days:
@@ -450,176 +233,47 @@ if awaiting_manual_download > N days:
   require explicit manual/admin forced teardown
 ```
 
-Finalization means recordings are safely prepared. It does not mean the droplet is safe to destroy. Do not silently destroy a droplet that may still have unfinalized or undownloaded recordings.
+## Health and readiness
 
----
+The control plane exposes health/readiness endpoints; implemented response details live in `internal/server`.
 
-## Reconciler loop
-
-One process is enough.
-
-Every 10–30 seconds:
-
-```go
-for each session not terminal:
-    reconcileSession(session)
-```
-
-Each reconcile operation should be safe to repeat.
-
-Pseudo-logic:
-
-```txt
-created:
-  ensure droplet exists
-  move to provisioning/waiting_for_dns
-
-provisioning:
-  ensure droplet exists
-  ensure ip stored
-  ensure dns exists
-  wait for health
-
-waiting_for_dns:
-  ensure dns exists
-  poll https://room.../healthz
-  if healthy -> ready
-
-finalizing:
-  wait for finalized callback or timeout
-
-awaiting_manual_download:
-  keep droplet alive
-  show download links/instructions
-  do not teardown automatically
-
-teardown_pending:
-  ensure dns deleted
-  ensure droplet destroyed
-  move to ended
-
-failed:
-  do nothing unless explicit retry
-```
-
-Keep this in-process. Do not add Redis/BullMQ/Celery yet.
-
----
-
-## Health checks
-
-### Control plane
-
-```http
-GET /healthz
-GET /readyz
-```
-
-### Session droplet
-
-```http
-GET /healthz
-```
-
-Returns:
-
-```json
-{
-  "ok": true,
-  "session_id": "sess_123",
-  "livekit": "ok",
-  "recording_server": "ok",
-  "disk": "ok"
-}
-```
-
-The control plane should not route users to a session droplet until this passes.
-
----
+Session droplets must expose a health endpoint that proves the room app, LiveKit/TURN, recording server, and disk are ready enough for users. The control plane must not route users to a session droplet until this passes and the authenticated readiness callback has been accepted.
 
 ## DNS model
 
 Keep it simple:
 
 ```txt
-control.example.com              -> persistent control plane
-room-<room-id>.sessions.example.com -> per-session droplet IP
+control.example.com                   -> persistent control plane
+room-<opaque-id>.sessions.example.com -> per-session droplet IP
 ```
 
 Room IDs are opaque, DNS-safe labels generated by the control plane. Do not derive room DNS labels from user-facing join slugs; slugs are for stable control-plane URLs, while room domains are operational routing targets with DNS length/character constraints.
 
-Join links should remain stable:
+Join links remain stable control-plane URLs:
 
 ```txt
 https://control.example.com/join/my-session?token=...
 ```
 
-The user-facing join link should **not** point directly to the session droplet. That gives the control plane a chance to show waiting/errors/retries.
-
----
+The user-facing join link must not point directly to the session droplet. That gives the control plane a chance to show waiting/errors/retries.
 
 ## Security basics
 
 Minimum viable:
 
 - Random unguessable session IDs.
-- Separate host and guest join-link tokens stored in `session_access_tokens`.
-- Hash all join-link and machine tokens in SQLite.
-- Per-session machine token for droplet-to-control callbacks issued during provisioning; only its hash is stored on `sessions`.
+- Separate host and guest join-link tokens.
+- Hash all join-link and machine tokens before storage.
+- Per-session machine token for droplet-to-control callbacks.
 - DO and Cloudflare tokens only live on the control-plane droplet.
 - Session droplets never receive DO/Cloudflare credentials.
-- Internal callback endpoints require machine token.
-- Dashboard auth starts as single-admin cookie auth, not OAuth or magic links.
-
-### Control-plane dashboard auth
-
-Use Rails-style cookie auth with boring, proven primitives:
-
-- Control-plane HTML, JS, and CSS are public; private data and actions are protected by Go API auth.
-- `POST /login` and `POST /logout` set and clear the cookie.
-- One admin identity: `admin`.
-- Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using bcrypt.
-- Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. `REMOTE_TAPE_DEV_ADMIN_PASSWORD` is allowed only when `REMOTE_TAPE_ENV=development`.
-- Use a signed and encrypted session cookie from a proven Go library; do not hand-roll cookie crypto.
-- Cookie contains only minimal session claims such as subject, issued-at, and expiry. Do not store secrets, tokens, or password hashes in the cookie.
-- Cookie flags in production: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and a bounded lifetime.
-- Protect all browser-initiated unsafe methods with CSRF tokens.
-- Send baseline security headers: HSTS over HTTPS, `Content-Security-Policy`, `Referrer-Policy`, and `X-Content-Type-Options: nosniff`.
-- Rate-limit login attempts per IP, with structured logs for failures. Only trust proxy-overwritten `X-Forwarded-For` from loopback; ignore client-supplied `Forwarded` headers.
-
-Protected by dashboard auth:
-
-```http
-GET  /api/sessions
-POST /api/sessions
-GET  /api/sessions/:id
-POST /api/sessions/:id/start
-POST /api/sessions/:id/end
-POST /api/sessions/:id/confirm-download
-POST /api/sessions/:id/retry
-```
-
-CSRF-protected because they use cookie auth:
-
-```http
-POST /login
-POST /api/sessions
-POST /api/sessions/:id/start
-POST /api/sessions/:id/end
-POST /api/sessions/:id/confirm-download
-POST /api/sessions/:id/retry
-POST /logout
-```
-
-Join links and session-droplet callbacks are separate auth boundaries:
-
-- `GET /login` and `GET /join/:slug?token=...` are public control-plane pages.
-- `GET /join/:slug?token=...` validates against `session_access_tokens`, rejects revoked tokens, updates `last_used_at`, and does not require dashboard login.
-- `/internal/sessions/:id/...` validates against `sessions.machine_token_hash` and does not use dashboard cookies or CSRF.
-
-Avoid OAuth, user accounts, teams, and email magic links until the product actually needs them.
-
----
+- Dashboard auth starts as single-admin cookie auth.
+- Production requires a password hash, not a plaintext admin password.
+- Development may allow a plaintext dev password for fast local setup.
+- Use proven cookie/session primitives; do not hand-roll cookie crypto.
+- Send baseline browser security headers from the control plane.
+- Rate-limit login attempts and log failures with enough structure to debug abuse.
 
 ## Observability
 
@@ -628,99 +282,39 @@ Need this from day one:
 1. Structured logs
 2. Session event timeline
 3. Admin/debug page per session
-4. Reconciler error messages persisted in DB
+4. Reconciler error messages persisted in the database
 5. “Adopted existing droplet” events
-
-Example debug page; align the degraded/attention state with [`docs/ui-reference/admin-diagnostics-degraded-and-attention.png`](docs/ui-reference/admin-diagnostics-degraded-and-attention.png):
-
-```txt
-Session: sess_123
-Status: waiting_for_dns
-Droplet ID: 123456
-Droplet IP: 1.2.3.4
-DNS: room-abc.sessions.example.com
-Last error: health check timeout
-Attempts: 3
-
-Timeline:
-10:00 session.created
-10:01 droplet.create.started
-10:02 droplet.create.succeeded
-10:02 dns.create.succeeded
-10:04 healthcheck.failed
-```
 
 This is much more valuable than premature metrics.
 
----
+## UI architecture
 
-## UI technology decision
-
-Use one small TypeScript/React frontend codebase for both user-facing surfaces:
+Use one small TypeScript/React frontend workspace for both user-facing surfaces:
 
 1. **Control UI**: dashboard, session creation, session status, join-link waiting pages, and manual download confirmation. Built as static assets and embedded in the control-plane Go binary.
-2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session droplet. The room UI must not route recording media or chunk ingest through the control plane.
+2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session droplet.
 
-Recommended layout:
+The room UI must not route recording media or chunk ingest through the control plane.
 
-```txt
-web/
-  package.json
-  vite.config.ts
-  tsconfig.json
-  index.control.html
-  index.room.html
-  src/{control,room,shared}/
-  dist/room/     # deployed to per-session droplets
-internal/controlui/
-  embed.go
-  dist/control/  # embedded into the control-plane Go binary
-```
+Keep shared UI/client utilities separate from control-plane and room-specific code so architecture boundaries stay obvious. Implemented build details live in `web/package.json` and `web/vite.config.ts`.
 
-Vite builds two static entrypoints from one workspace into separate outputs. Keep shared UI/client utilities in `src/shared`; keep control-plane and room-specific code separate so architecture boundaries stay obvious.
+UI references live in `docs/ui-reference/`. Use them as product direction for early screens and state coverage, not pixel-perfect contracts. Preserve operational clarity and the state model over exact styling.
 
-### UI reference artifacts
+### UI stack invariants
 
-Use the checked-in UI references as product direction for early screens and state coverage. They are references, not pixel-perfect contracts; preserve the operational clarity and state model over exact styling.
+These are product/DX constraints, not just package choices:
 
-Control UI references:
+- TypeScript strict mode for frontend code.
+- React for UI and React Router for durable URL-backed navigation.
+- TanStack Query for server state; avoid custom global API caches.
+- Zod at API/WebRTC/storage boundaries only. Do not wrap every internal object in schemas.
+- Vitest for unit tests/state machines, React Testing Library for important component behavior, MSW for deterministic API fixtures, and Playwright only for smoke flows that must prove browser behavior.
+- Plain CSS with CSS custom-property design tokens. No Tailwind, CSS-in-JS, Sass, or component framework until repetition proves the need.
+- Inline SVG or a tiny icon package only when needed. No broad design-system dependency at the start.
+- Native React forms first. Add React Hook Form only when form complexity actually appears.
+- React local state, URL state, and TanStack Query are enough initially. No Redux/Zustand/Jotai.
 
-- Sign-in: [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
-- Create session form: [`docs/ui-reference/admin-create-session-form-valid.png`](docs/ui-reference/admin-create-session-form-valid.png)
-- Sessions list across lifecycle states: [`docs/ui-reference/admin-sessions-list-mixed-states.png`](docs/ui-reference/admin-sessions-list-mixed-states.png)
-- Active healthy session detail: [`docs/ui-reference/admin-session-detail-active-healthy.png`](docs/ui-reference/admin-session-detail-active-healthy.png)
-- Awaiting manual download state: [`docs/ui-reference/admin-session-detail-awaiting-manual-download.png`](docs/ui-reference/admin-session-detail-awaiting-manual-download.png)
-- Diagnostics degraded/attention state: [`docs/ui-reference/admin-diagnostics-degraded-and-attention.png`](docs/ui-reference/admin-diagnostics-degraded-and-attention.png)
-- Settings for provisioning/security/cleanup: [`docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png`](docs/ui-reference/admin-settings-general-provisioning-security-cleanup.png)
-
-Room/join references:
-
-- Provisioning/DNS waiting page: [`docs/ui-reference/room-join-provisioning-waiting-for-dns.png`](docs/ui-reference/room-join-provisioning-waiting-for-dns.png)
-- Provisioning failed/unavailable page: [`docs/ui-reference/room-session-unavailable-provisioning-failed.png`](docs/ui-reference/room-session-unavailable-provisioning-failed.png)
-- Ended session summary: [`docs/ui-reference/room-session-ended-summary.png`](docs/ui-reference/room-session-ended-summary.png)
-
-### UI stack
-
-- **Language**: TypeScript, strict mode.
-- **UI**: React.
-- **Build/dev server**: Vite.
-- **Lint**: oxlint.
-- **Format**: oxfmt.
-- **Package manager**: pnpm.
-- **Routing**: React Router. Use URL state for durable navigation; avoid custom global routing state.
-- **Server state**: TanStack Query for API reads/mutations, retries, loading states, and cache invalidation.
-- **Runtime validation**: Zod at API/WebRTC/storage boundaries only. Do not wrap every internal object in schemas.
-- **Testing**:
-  - Vitest for unit tests and pure state machines.
-  - React Testing Library for important component behavior.
-  - MSW for deterministic API fixtures.
-  - Playwright only for smoke flows that must prove browser behavior.
-- **Styling**: plain CSS with CSS modules and design tokens in CSS custom properties. No Tailwind, CSS-in-JS, Sass, or component framework until repetition proves the need.
-- **Icons**: inline SVG or a tiny icon package only when needed. No broad design-system dependency at the start.
-- **Forms**: native React forms first. Add React Hook Form only when form complexity actually appears.
-- **State management**: React local state, URL state, and TanStack Query. No Redux/Zustand/Jotai initially.
-
-### UI defaults
+UI defaults:
 
 - Prefer semantic HTML, keyboard support, and visible recording/network state over visual polish.
 - Treat reconnecting, stalled uploads, low disk, permission denial, and finalization as first-class states in the room UI.
@@ -728,22 +322,7 @@ Room/join references:
 - The dashboard can be plain. The recording path UX must be explicit, calm, and hard to misuse.
 - Use browser APIs directly where they are simple; wrap only unstable or cross-cutting behavior such as recorder state, upload queues, and LiveKit connection lifecycle.
 
-### UI feedback loop
-
-Required local commands once `web/` exists:
-
-```txt
-pnpm --dir web dev
-pnpm --dir web build
-pnpm --dir web test
-pnpm --dir web lint
-pnpm --dir web format:check
-pnpm --dir web typecheck
-```
-
-Early UI slices should run against a fake API/MSW scenario before real DigitalOcean, Cloudflare, LiveKit, or recording integration is required. Browser-visible flows need deterministic fixtures so failures are reproducible from the CLI.
-
----
+Early UI slices should run against fake API/MSW scenarios before real DigitalOcean, Cloudflare, LiveKit, or recording integration is required. Browser-visible flows need deterministic fixtures so failures are reproducible from the CLI.
 
 ## What not to build yet
 
@@ -763,13 +342,9 @@ Do **not** start with:
 
 Those may come later. Right now they slow us down and hide the important failure modes.
 
----
-
 ## Implementation plan
 
 Execution slices live in [`ROADMAP.md`](ROADMAP.md). Keep this document focused on durable architecture and system invariants.
-
----
 
 ## Final call
 
