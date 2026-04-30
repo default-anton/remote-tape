@@ -575,7 +575,8 @@ Minimum viable:
 
 Use Rails-style cookie auth with boring, proven primitives:
 
-- `GET /login` serves the public React login bundle; `POST /login` and `POST /logout` set and clear the cookie.
+- Control-plane HTML, JS, and CSS are public; private data and actions are protected by Go API auth.
+- `POST /login` and `POST /logout` set and clear the cookie.
 - One admin identity: `admin`.
 - Production config must provide `REMOTE_TAPE_ADMIN_PASSWORD_HASH`, using bcrypt.
 - Do not require plaintext `REMOTE_TAPE_ADMIN_PASSWORD` in production. `REMOTE_TAPE_DEV_ADMIN_PASSWORD` is allowed only when `REMOTE_TAPE_ENV=development`.
@@ -583,13 +584,12 @@ Use Rails-style cookie auth with boring, proven primitives:
 - Cookie contains only minimal session claims such as subject, issued-at, and expiry. Do not store secrets, tokens, or password hashes in the cookie.
 - Cookie flags in production: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and a bounded lifetime.
 - Protect all browser-initiated unsafe methods with CSRF tokens.
+- Send baseline security headers: HSTS over HTTPS, `Content-Security-Policy`, `Referrer-Policy`, and `X-Content-Type-Options: nosniff`.
 - Rate-limit login attempts per IP, with structured logs for failures. Only trust proxy-overwritten `X-Forwarded-For` from loopback; ignore client-supplied `Forwarded` headers.
 
 Protected by dashboard auth:
 
 ```http
-GET  /
-GET  /assets/*
 GET  /api/sessions
 POST /api/sessions
 GET  /api/sessions/:id
@@ -613,7 +613,7 @@ POST /logout
 
 Join links and session-droplet callbacks are separate auth boundaries:
 
-- `GET /login` and `GET /join/:slug?token=...` use public UI bundles separate from the protected dashboard bundle.
+- `GET /login` and `GET /join/:slug?token=...` are public control-plane pages.
 - `GET /join/:slug?token=...` validates against `session_access_tokens`, rejects revoked tokens, updates `last_used_at`, and does not require dashboard login.
 - `/internal/sessions/:id/...` validates against `sessions.machine_token_hash` and does not use dashboard cookies or CSRF.
 
@@ -800,6 +800,7 @@ Create session -> see session row, host/guest join links, and timeline -> open j
 - single-admin cookie auth
 - production password hash config
 - CSRF protection for unsafe browser methods
+- baseline security headers for control-plane responses
 - login rate limiting and structured auth failure logs
 - protect dashboard/session-management APIs
 
