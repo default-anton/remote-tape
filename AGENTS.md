@@ -2,7 +2,7 @@
 
 remote-tape is a free, open-source remote podcast recorder.
 
-Start with `DESIGN.md` for architecture, lifecycle, recording targets, and implementation slices. Code is source of truth after implementation.
+Start with `DESIGN.md` for architecture, lifecycle, and recording targets; use `ROADMAP.md` for implementation slices. Code is source of truth after implementation.
 
 ## Architecture boundaries
 
@@ -31,7 +31,7 @@ Start with `DESIGN.md` for architecture, lifecycle, recording targets, and imple
 
 ## Project state
 
-- Each slice should be doable from a fresh session: read `DESIGN.md`, inspect relevant code/tests, then continue.
-- `DESIGN.md` must not grow; replace/trim stale text instead of appending.
+- Each slice should be doable from a fresh session: read `DESIGN.md`, then `ROADMAP.md`, inspect relevant code/tests, then continue.
+- `DESIGN.md` must not grow; replace/trim stale text instead of appending. Keep slice status and sequencing in `ROADMAP.md`.
 - Blank slate: private, unreleased, no production users/data.
 - Do not optimize for backward compatibility, migrations, or legacy support unless explicitly asked.
