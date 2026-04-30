@@ -25,7 +25,7 @@ function controlHistoryFallback(): Plugin {
           path.startsWith("/favicon") ||
           path.includes(".");
         if (!isControlAPI && !isProxiedStatus && !isStaticAsset) {
-          req.url = publicIndexFor(path);
+          req.url = "/index.control.html";
         }
         next();
       });
@@ -33,31 +33,10 @@ function controlHistoryFallback(): Plugin {
   };
 }
 
-function publicIndexFor(path: string) {
-  if (path === "/login") return "/index.auth.html";
-  if (path === "/join" || path.startsWith("/join/")) return "/index.join.html";
-  return "/index.control.html";
-}
-
 export default defineConfig(({ mode }) => {
-  const target =
-    mode === "room" ? "room" : mode === "join" ? "join" : mode === "auth" ? "auth" : "control";
-  const htmlFile =
-    target === "room"
-      ? "index.room.html"
-      : target === "join"
-        ? "index.join.html"
-        : target === "auth"
-          ? "index.auth.html"
-          : "index.control.html";
-  const outDir =
-    target === "control"
-      ? "../internal/controlui/dist/control"
-      : target === "join"
-        ? "../internal/controlui/dist/join"
-        : target === "auth"
-          ? "../internal/controlui/dist/auth"
-          : "dist/room";
+  const target = mode === "room" ? "room" : "control";
+  const htmlFile = target === "room" ? "index.room.html" : "index.control.html";
+  const outDir = target === "control" ? "../internal/controlui/dist/control" : "dist/room";
   const proxy =
     target === "control" && mode !== "mock"
       ? {
@@ -76,7 +55,7 @@ export default defineConfig(({ mode }) => {
       : undefined;
 
   return {
-    base: target === "join" ? "/join-assets/" : target === "auth" ? "/auth-assets/" : "/",
+    base: "/",
     plugins: target === "control" ? [controlHistoryFallback(), react()] : [react()],
     publicDir: mode === "mock" ? "public" : false,
     build: {

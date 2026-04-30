@@ -303,6 +303,21 @@ describe("control app", () => {
     expect(screen.getByText("host")).toBeInTheDocument();
   });
 
+  it("keeps the documented mock join smoke URL runnable", async () => {
+    renderApp("/join/demo?token=x");
+
+    expect(await screen.findByRole("heading", { name: "Demo session" })).toBeInTheDocument();
+    expect(screen.getByText("Provisioning your room")).toBeInTheDocument();
+    expect(screen.getByText("guest")).toBeInTheDocument();
+  });
+
+  it("keeps nested join paths public in the SPA", async () => {
+    renderApp("/join/joinable/extra?token=guest-token&scenario=provisioning&auth=unauthenticated");
+
+    expect(await screen.findByText("Provisioning your room")).toBeInTheDocument();
+    expect(screen.queryByText("Checking session…")).not.toBeInTheDocument();
+  });
+
   it("renders ready join links without pretending to keep polling", async () => {
     renderApp("/join/joinable?token=guest-token&scenario=ready");
 

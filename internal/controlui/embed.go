@@ -12,19 +12,9 @@ func FS() fs.FS {
 	return subFS("dist/control")
 }
 
-func AuthFS() fs.FS {
-	return subFS("dist/auth")
-}
-
-func JoinFS() fs.FS {
-	return subFS("dist/join")
-}
-
 func Built() bool {
-	_, controlErr := fs.Stat(FS(), "index.control.html")
-	_, authErr := fs.Stat(AuthFS(), "index.auth.html")
-	_, joinErr := fs.Stat(JoinFS(), "index.join.html")
-	return controlErr == nil && authErr == nil && joinErr == nil
+	_, err := fs.Stat(FS(), "index.control.html")
+	return err == nil
 }
 
 func subFS(dir string) fs.FS {

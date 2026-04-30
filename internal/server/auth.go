@@ -8,7 +8,7 @@ import (
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
-		s.serveAuthIndex(w, r)
+		s.serveControlIndex(w, r)
 	case http.MethodPost:
 		if s.auth == nil {
 			writeError(w, http.StatusServiceUnavailable, "authentication unavailable")
@@ -100,11 +100,11 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/") || path == "/join" || strings.HasPrefix(path, "/join/") || strings.HasPrefix(path, "/auth-assets/") || strings.HasPrefix(path, "/join-assets/")
+	return path == "/healthz" || path == "/readyz" || path == "/login" || path == "/logout" || path == "/api/auth/session" || path == "/api/join" || strings.HasPrefix(path, "/api/join/") || path == "/join" || strings.HasPrefix(path, "/join/") || isAssetPath(path)
 }
 
 func protectedPath(path string) bool {
-	return path == "/" || path == "/api/sessions" || strings.HasPrefix(path, "/api/sessions/") || !isAPIPath(path)
+	return path == "/api/sessions" || strings.HasPrefix(path, "/api/sessions/")
 }
 
 func requiresCSRF(method, path string) bool {

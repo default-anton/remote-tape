@@ -792,7 +792,7 @@ Demo:
 Create session -> see session row, host/guest join links, and timeline -> open join link -> waiting page
 ```
 
-### Slice 3: dashboard auth
+### Slice 3: dashboard auth — implemented
 
 - React login route at `GET /login`; align with [`docs/ui-reference/admin-sign-in-empty-focused.png`](docs/ui-reference/admin-sign-in-empty-focused.png)
 - `POST /login`

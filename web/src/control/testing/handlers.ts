@@ -92,8 +92,12 @@ export function createControlMockApi(): ControlMockApi {
       const url = new URL(request.url);
       const token = url.searchParams.get("token");
       const created = createdSessionFor(slug);
-      const role = roleForToken(slug, token, selectedScenario(request), created);
-      const session = created?.session ?? sessionsFor(request).find((item) => item.slug === slug);
+      const demo = demoJoinSession(slug, token);
+      const role = demo?.role ?? roleForToken(slug, token, selectedScenario(request), created);
+      const session =
+        demo?.session ??
+        created?.session ??
+        sessionsFor(request).find((item) => item.slug === slug);
 
       if (!session || !role) {
         return HttpResponse.json({ ok: false, error: "join link not found" }, { status: 404 });
@@ -113,6 +117,14 @@ export function createControlMockApi(): ControlMockApi {
 
 export function controlHandlers(): HttpHandler[] {
   return createControlMockApi().handlers;
+}
+
+function demoJoinSession(slug: string, token: string | null) {
+  if (slug !== "demo" || token !== "x") return null;
+  return {
+    role: "guest" as const,
+    session: makeSession({ id: "sess_demo", slug: "demo", title: "Demo session" }),
+  };
 }
 
 function roleForToken(

@@ -246,33 +246,43 @@ func TestControlAppServesBuiltIndex(t *testing.T) {
 	}
 }
 
-func TestPublicAppsArePublicAndDashboardAssetsAreProtected(t *testing.T) {
-	handler, db := newTestHandlerWithControlAuthAndJoinDist(t, map[string]string{
+func TestControlPagesAndAssetsArePublicWhileSessionAPIsAreProtected(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
 		controlIndexFile:       "<div id=\"control-root\"></div>",
 		"assets/app.123abc.js": "console.log('control')",
-	}, map[string]string{
-		authIndexFile:           "<div id=\"auth-root\"></div>",
-		"assets/auth.123abc.js": "console.log('auth')",
-	}, map[string]string{
-		joinIndexFile:           "<div id=\"join-root\"></div>",
-		"assets/join.123abc.js": "console.log('join')",
+		"favicon.ico":          "icon",
 	})
 	defer db.Close()
 
-	for _, tc := range []struct {
-		path string
-		want int
-	}{
-		{path: "/login", want: http.StatusOK},
-		{path: "/auth-assets/assets/auth.123abc.js", want: http.StatusOK},
-		{path: "/join/joinable?token=token", want: http.StatusOK},
-		{path: "/join-assets/assets/join.123abc.js", want: http.StatusOK},
-		{path: "/assets/app.123abc.js", want: http.StatusSeeOther},
-	} {
+	for _, path := range []string{"/login", "/join/joinable?token=token", "/sessions", "/assets/app.123abc.js", "/favicon.ico"} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
-		if response.Code != tc.want {
-			t.Fatalf("GET %s status = %d, want %d body = %s", tc.path, response.Code, tc.want, response.Body.String())
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d body = %s", path, response.Code, response.Body.String())
+		}
+	}
+
+	for _, path := range []string{"/api/sessions", "/api/sessions/sess_123"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("GET %s status = %d, want %d body = %s", path, response.Code, http.StatusUnauthorized, response.Body.String())
+		}
+	}
+}
+
+func TestRemovedAuthAndJoinAssetPrefixesDoNotServeFiles(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile:       "<div id=\"control-root\"></div>",
+		"assets/app.123abc.js": "console.log('control')",
+	})
+	defer db.Close()
+
+	for _, path := range []string{"/auth-assets/assets/app.123abc.js", "/join-assets/assets/app.123abc.js"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("GET %s status = %d, want %d body = %s", path, response.Code, http.StatusNotFound, response.Body.String())
 		}
 	}
 }
@@ -306,6 +316,31 @@ func TestControlAppServesAssetsWithCacheHeaders(t *testing.T) {
 	}
 	if favicon.Header().Get("Cache-Control") != "public, max-age=3600" {
 		t.Fatalf("favicon Cache-Control = %q", favicon.Header().Get("Cache-Control"))
+	}
+}
+
+func TestControlPlaneSecurityHeaders(t *testing.T) {
+	handler, db := newTestHandlerWithControlDist(t, map[string]string{
+		controlIndexFile: "<div id=\"root\"></div>",
+	})
+	defer db.Close()
+
+	request := httptest.NewRequest(http.MethodGet, "/login", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Header().Get("Content-Security-Policy") == "" {
+		t.Fatal("missing Content-Security-Policy")
+	}
+	if response.Header().Get("Referrer-Policy") == "" {
+		t.Fatal("missing Referrer-Policy")
+	}
+	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q", response.Header().Get("X-Content-Type-Options"))
+	}
+	if response.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatal("missing Strict-Transport-Security")
 	}
 }
 
@@ -442,11 +477,6 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 
 func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.Handler, *sql.DB) {
 	t.Helper()
-	return newTestHandlerWithControlAuthAndJoinDist(t, files, map[string]string{authIndexFile: "<div id=\"auth-root\"></div>"}, map[string]string{joinIndexFile: "<div id=\"join-root\"></div>"})
-}
-
-func newTestHandlerWithControlAuthAndJoinDist(t *testing.T, controlFiles map[string]string, authFiles map[string]string, joinFiles map[string]string) (http.Handler, *sql.DB) {
-	t.Helper()
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
 	if err != nil {
@@ -456,7 +486,7 @@ func newTestHandlerWithControlAuthAndJoinDist(t *testing.T, controlFiles map[str
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: testFS(controlFiles), authUIFS: testFS(authFiles), joinUIFS: testFS(joinFiles)}), db
+	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: testFS(files)}), db
 }
 
 func testFS(files map[string]string) fs.FS {

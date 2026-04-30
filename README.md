@@ -25,7 +25,7 @@ pnpm --dir web dev
 
 Open <http://127.0.0.1:5173/login> and sign in with `REMOTE_TAPE_DEV_ADMIN_PASSWORD` from `.envrc`. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
 
-For the embedded UI, build the frontend before building/running the Go binary. The public login bundle is embedded from `internal/controlui/dist/auth`; the protected dashboard bundle is embedded from `internal/controlui/dist/control`; the public join-link bundle is embedded from `internal/controlui/dist/join`; the room bundle is built separately under `web/dist/room` for session droplets.
+For the embedded UI, build the frontend before building/running the Go binary. There are two bundles: the control bundle is embedded from `internal/controlui/dist/control` and owns login, join, and dashboard routes; the room bundle is built separately under `web/dist/room` for session droplets.
 
 ```sh
 pnpm --dir web build
