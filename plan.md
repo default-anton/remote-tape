@@ -30,6 +30,9 @@ Touch:
 - `internal/session/repository.go`, `internal/session/repository_test.go` — provisioning work queries and droplet persistence transitions.
 - `internal/reconciler/reconciler.go`, `internal/reconciler/reconciler_test.go` — call provisioner after claiming/recovering work.
 - `cmd/control-plane/main.go`, `cmd/control-plane/main_test.go` — construct/wire DO provisioner when configured.
+- `internal/server` handlers/tests — add the admin force-destroy endpoint and keep auth/CSRF behavior covered.
+- `web` admin session detail UI/tests — droplet ID/IP already exist; add Slice 5 timeline events and the force-destroy session-server action with typed confirmation for eligible states. Keep mock scenarios aligned with the existing UI reference direction in `ROADMAP.md`.
+- mock UI/reference fixtures as needed — keep user-visible session states current.
 - `README.md` only if env/demo instructions change materially.
 - `ROADMAP.md` after implementation: move Slice 5 to completed.
 
@@ -126,6 +129,10 @@ Minimum test coverage:
   - any environment without `REMOTE_TAPE_DIGITALOCEAN_API_TOKEN` fails validation.
   - any environment without `REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS` fails validation.
   - boot logs redact token presence and show configured SSH key count, not key material.
+- Server/UI:
+  - force-destroy endpoint requires admin auth, CSRF, eligible session state, and typed confirmation.
+  - session detail shows droplet ID/IP and relevant provisioning/force-destroy timeline events.
+  - force-destroy action is visible only when eligible, uses product copy, and makes permanent destruction explicit.
 
 Manual demo with the already-loaded scoped development token:
 
@@ -133,10 +140,27 @@ Manual demo with the already-loaded scoped development token:
 confirm REMOTE_TAPE_DIGITALOCEAN_API_TOKEN and REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS are present in the process env -> run control plane -> create session -> DO droplet appears with both tags and SSH keys -> session becomes waiting_for_dns -> SSH works with root@<droplet_ip> if needed -> timeline shows started/create-or-adopt/waiting-for-dns handoff
 ```
 
+## Force destroy escape hatch
+
+Slice 5 should include a durable operator/admin escape hatch to destroy a session droplet. This is product behavior, not a development-only shortcut.
+
+Add an explicit force-destroy action that:
+
+- Requires admin auth and CSRF protection when exposed over HTTP.
+- Requires a typed confirmation string in the UI/API, e.g. the session slug or `destroy <session_slug>`.
+- Finds the droplet by persisted `droplet_id`; if missing, falls back to the `remote-tape-session:<session_id>` tag.
+- Deletes the droplet idempotently; a missing droplet is success if no matching tagged droplet remains.
+- Appends an explicit timeline event, e.g. `session.force_destroyed`, with the destroyed droplet ID when known.
+- Persists a clear terminal/attention result so the reconciler does not recreate the droplet.
+
+For Slice 5, scope this to sessions that have not reached recording-capable states yet: `provisioning`, `waiting_for_dns`, and `failed`. Later teardown slices can extend the same escape hatch to active/finalization states, but only with stronger copy that states recordings may be permanently lost.
+
+Do not call this development cleanup in code, docs, events, or UI. Use product language: `force destroy session server`.
+
 ## Non-goals
 
 - Cloudflare DNS creation/deletion.
 - Session droplet ready callbacks.
 - Machine-token boot injection.
-- Teardown/droplet destroy.
+- Full normal teardown flow.
 - Recording media paths or room app deployment changes.
