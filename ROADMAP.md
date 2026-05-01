@@ -47,17 +47,13 @@ Demo:
 Unauthenticated API call fails -> login succeeds -> create session succeeds -> logout blocks access again
 ```
 
-## Current slice
+### Slice 4: reconciler harness + lifecycle attempt visibility — implemented
 
-### Slice 4: reconciler harness + lifecycle attempt visibility
-
-Implement the state-driven in-process reconciler without fake infrastructure. This slice proves the control-plane loop can safely pick up desired state, apply conditional lifecycle transitions, persist attempts/errors/events, and expose progress in the UI/mock.
-
-- reconciler `Run(ctx)` loop and testable `Step(ctx)`
+- in-process reconciler `Run(ctx)` loop and testable `Step(ctx)`
 - bounded candidate selection for `created` sessions, ordered by `updated_at asc, id asc`
 - conditional `created -> provisioning` transition
-- persisted `last_error`, `last_error_at`, and `last_error_phase='provisioning'` for provisioning failures
-- `provision_attempts` increments and lifecycle events appended in the same transaction as state updates
+- durable provisioning failure persistence through repository transitions
+- `provision_attempts` increments and lifecycle events appended transactionally
 - deterministic mock/UI coverage for queued, provisioning, and provisioning-failed states
 
 Demo:
@@ -66,9 +62,7 @@ Demo:
 Create session -> reconciler advances it to provisioning -> timeline shows the provisioning attempt -> failures persist visibly
 ```
 
-Do not fake droplet ID/IP/DNS/health/readiness/redirects in this slice. Real provisioning output begins in Slice 5.
-
-## Upcoming slices
+## Current slice
 
 ### Slice 5: real DigitalOcean provisioner
 
@@ -84,6 +78,8 @@ Demo:
 ```txt
 Create session -> real droplet appears -> session status updates -> timeline shows each step
 ```
+
+## Upcoming slices
 
 ### Slice 6: Cloudflare DNS
 

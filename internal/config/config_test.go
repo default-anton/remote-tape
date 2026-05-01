@@ -25,6 +25,19 @@ func TestDefaultLoad(t *testing.T) {
 	if cfg.Security.AdminCookieSessionDuration != 7*24*time.Hour {
 		t.Fatalf("AdminCookieSessionDuration = %v", cfg.Security.AdminCookieSessionDuration)
 	}
+	if cfg.Provisioning.ReconcileInterval != 5*time.Second {
+		t.Fatalf("ReconcileInterval = %v", cfg.Provisioning.ReconcileInterval)
+	}
+}
+
+func TestReconcileIntervalMustBePositive(t *testing.T) {
+	cfg := validConfig()
+	cfg.Provisioning.ReconcileInterval = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "REMOTE_TAPE_RECONCILE_INTERVAL") {
+		t.Fatalf("Validate() error = %v", err)
+	}
 }
 
 func TestProductionConfigWithoutPasswordHashIsInvalid(t *testing.T) {
@@ -108,6 +121,7 @@ func validConfig() Config {
 			DefaultDropletSize:  "s-2vcpu-2gb",
 			DefaultRegion:       "nyc3",
 			ImageID:             "ubuntu-24-04-x64",
+			ReconcileInterval:   5 * time.Second,
 			HealthCheckTimeout:  time.Minute,
 			FinalizationTimeout: 15 * time.Minute,
 		},
@@ -140,6 +154,7 @@ func clearEnv(t *testing.T) {
 		"REMOTE_TAPE_DEFAULT_DROPLET_SIZE",
 		"REMOTE_TAPE_DEFAULT_REGION",
 		"REMOTE_TAPE_IMAGE_ID",
+		"REMOTE_TAPE_RECONCILE_INTERVAL",
 		"REMOTE_TAPE_HEALTH_CHECK_TIMEOUT",
 		"REMOTE_TAPE_FINALIZATION_TIMEOUT",
 		"REMOTE_TAPE_ADMIN_PASSWORD_HASH",

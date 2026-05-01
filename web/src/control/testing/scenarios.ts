@@ -4,7 +4,7 @@ import type { Detail, Session } from "../types";
 
 export const lifecycleStatuses = SESSION_STATUSES;
 
-export type ScenarioName = "mixed" | "joinable" | "provisioning" | SessionStatus;
+export type ScenarioName = "mixed" | "joinable" | "provisioning_failed" | SessionStatus;
 
 export type ControlScenario = {
   name: ScenarioName;
@@ -17,7 +17,6 @@ export const validHostToken = "host-token";
 
 const statusDetails: Partial<Record<SessionStatus, Partial<Session>>> = {
   provisioning: {
-    droplet_id: "123456789",
     provision_attempts: 1,
   },
   waiting_for_dns: {
@@ -86,31 +85,14 @@ export function scenario(name: string | null | undefined): ControlScenario {
   const normalized = normalizeScenarioName(name);
   if (normalized === "mixed") return mixedScenario();
   if (normalized === "joinable") return joinableScenario();
-  if (normalized === "provisioning") return statusScenario("provisioning");
+  if (normalized === "provisioning_failed") return provisioningFailedScenario();
   return statusScenario(normalized);
 }
 
 export function detailForSession(session: Session): Detail {
   return makeDetail({
     session,
-    events: [
-      {
-        id: 1,
-        session_id: session.id,
-        type: "session.created",
-        message: "Session created",
-        metadata_json: null,
-        created_at: session.created_at,
-      },
-      {
-        id: 2,
-        session_id: session.id,
-        type: `session.${session.status}`,
-        message: `Fixture state: ${session.status}`,
-        metadata_json: null,
-        created_at: session.updated_at,
-      },
-    ],
+    events: eventsForSession(session),
   });
 }
 
@@ -263,9 +245,66 @@ function statusScenario(status: SessionStatus): ControlScenario {
   return { name: status, sessions: [session], joinSlug: session.slug };
 }
 
+function provisioningFailedScenario(): ControlScenario {
+  const session = makeSession({
+    id: "sess_joinable_provisioning_failed",
+    slug: "joinable",
+    title: "The Infra Podcast #312",
+    status: "failed",
+    provision_attempts: 1,
+    last_error: "DigitalOcean create droplet request failed: rate limited",
+    last_error_at: "2026-04-25T10:03:00.000000000Z",
+    last_error_phase: "provisioning",
+  });
+  return { name: "provisioning_failed", sessions: [session], joinSlug: session.slug };
+}
+
+function eventsForSession(session: Session) {
+  const events = [
+    {
+      id: 1,
+      session_id: session.id,
+      type: "session.created",
+      message: "Session created",
+      metadata_json: null,
+      created_at: session.created_at,
+    },
+  ];
+  if (session.provision_attempts > 0) {
+    events.push({
+      id: events.length + 1,
+      session_id: session.id,
+      type: "provisioning.started",
+      message: "Provisioning started",
+      metadata_json: null,
+      created_at: session.updated_at,
+    });
+  }
+  if (session.status === "failed" && session.last_error_phase === "provisioning") {
+    events.push({
+      id: events.length + 1,
+      session_id: session.id,
+      type: "provisioning.failed",
+      message: "Provisioning failed",
+      metadata_json: null,
+      created_at: session.last_error_at ?? session.updated_at,
+    });
+  } else if (session.status !== "created" && session.status !== "provisioning") {
+    events.push({
+      id: events.length + 1,
+      session_id: session.id,
+      type: `session.${session.status}`,
+      message: `Fixture state: ${session.status}`,
+      metadata_json: null,
+      created_at: session.updated_at,
+    });
+  }
+  return events;
+}
+
 function normalizeScenarioName(name: string | null | undefined): ScenarioName {
   if (!name) return "mixed";
-  if (name === "mixed" || name === "joinable" || name === "provisioning") return name;
+  if (name === "mixed" || name === "joinable" || name === "provisioning_failed") return name;
   if (lifecycleStatuses.includes(name as SessionStatus)) return name as SessionStatus;
   return "mixed";
 }

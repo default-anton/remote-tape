@@ -15,7 +15,9 @@ import (
 	"github.com/default-anton/remote-tape/internal/config"
 	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/reconciler"
 	"github.com/default-anton/remote-tape/internal/server"
+	"github.com/default-anton/remote-tape/internal/session"
 )
 
 func main() {
@@ -65,6 +67,8 @@ func run(ctx context.Context) int {
 		"migrations_applied", len(migrationResult.Applied),
 	)
 
+	sessionRepo := session.NewRepository(db)
+
 	listener, err := net.Listen("tcp", cfg.General.HTTPAddr)
 	if err != nil {
 		logger.ErrorContext(ctx, "http listen failed", "addr", cfg.General.HTTPAddr, "error", err)
@@ -83,6 +87,18 @@ func run(ctx context.Context) int {
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
+	rec := reconciler.New(sessionRepo, logger, reconciler.Options{Interval: cfg.Provisioning.ReconcileInterval})
+	reconcileCtx, stopReconciler := context.WithCancel(ctx)
+	reconcilerDone := make(chan struct{})
+	go func() {
+		rec.Run(reconcileCtx)
+		close(reconcilerDone)
+	}()
+	defer func() {
+		stopReconciler()
+		<-reconcilerDone
+	}()
 
 	serveErr := make(chan error, 1)
 	go func() {

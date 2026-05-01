@@ -145,11 +145,11 @@ function JoinMeta({ slug, role }: { slug: string; role: string }) {
 
 function JoinSteps({ status }: { status: SessionStatus }) {
   const steps = [
-    ["Creating droplet", "created"],
-    ["Assigning IP", "provisioning"],
-    ["Creating DNS", "waiting_for_dns"],
-    ["Warming services", "ready"],
-    ["Final health check", "active"],
+    ["Queued", "created"],
+    ["Provisioning room server", "provisioning"],
+    ["Waiting for DNS", "waiting_for_dns"],
+    ["Room ready", "ready"],
+    ["Session active", "active"],
   ] as const satisfies readonly (readonly [string, SessionStatus])[];
   const active = Math.max(
     0,
@@ -171,8 +171,10 @@ function JoinSteps({ status }: { status: SessionStatus }) {
 }
 
 function joinWaitingTitle(status: SessionStatus) {
+  if (status === "created") return "Queued for provisioning.";
+  if (status === "provisioning") return "Provisioning the room server.";
   if (status === "waiting_for_dns") return "Waiting for DNS to propagate.";
-  if (isProvisioningLikeStatus(status)) return "Waiting for provisioning to start.";
+  if (isProvisioningLikeStatus(status)) return "Provisioning is in progress.";
   return "Waiting for your host.";
 }
 

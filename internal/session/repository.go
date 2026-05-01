@@ -262,6 +262,118 @@ order by updated_at desc, created_at desc, id desc;
 	return sessions, nil
 }
 
+func (r *Repository) ListProvisioningCandidates(ctx context.Context, limit int) ([]Session, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("%w: provisioning candidate limit must be positive", ErrInvalidInput)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+select `+sessionColumns+`
+from sessions
+where status = 'created'
+order by updated_at asc, id asc
+limit ?;
+`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list provisioning candidates: %w", err)
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list provisioning candidates: %w", err)
+	}
+	return sessions, nil
+}
+
+func (r *Repository) MarkProvisioningStarted(ctx context.Context, sessionID string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	now := formatSQLiteTime(r.now())
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin mark provisioning started: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+update sessions
+set status = 'provisioning',
+    provision_attempts = provision_attempts + 1,
+    last_error = null,
+    last_error_at = null,
+    last_error_phase = null,
+    updated_at = ?
+where id = ? and status = 'created';
+`, now, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("mark provisioning started: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read provisioning started rows affected: %w", err)
+	}
+	if changed == 0 {
+		return false, nil
+	}
+	if _, err := appendEvent(ctx, tx, sessionID, "provisioning.started", "Provisioning started", nil, now); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit mark provisioning started: %w", err)
+	}
+	return true, nil
+}
+
+func (r *Repository) MarkProvisioningFailed(ctx context.Context, sessionID string, cause error) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	now := formatSQLiteTime(r.now())
+	message := capErrorMessage(cause)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin mark provisioning failed: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+update sessions
+set status = 'failed',
+    last_error = ?,
+    last_error_at = ?,
+    last_error_phase = 'provisioning',
+    updated_at = ?
+where id = ? and status = 'provisioning';
+`, message, now, now, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("mark provisioning failed: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read provisioning failed rows affected: %w", err)
+	}
+	if changed == 0 {
+		return false, nil
+	}
+	if _, err := appendEvent(ctx, tx, sessionID, "provisioning.failed", "Provisioning failed", nil, now); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit mark provisioning failed: %w", err)
+	}
+	return true, nil
+}
+
 func (r *Repository) GetSession(ctx context.Context, id string) (Detail, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -473,6 +585,18 @@ func messageValue(message *string) string {
 		return ""
 	}
 	return *message
+}
+
+func capErrorMessage(cause error) string {
+	message := "provisioning failed"
+	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
+		message = strings.TrimSpace(cause.Error())
+	}
+	runes := []rune(message)
+	if len(runes) > 2000 {
+		return string(runes[:2000])
+	}
+	return message
 }
 
 func HashToken(token string) string {

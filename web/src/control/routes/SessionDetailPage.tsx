@@ -8,6 +8,7 @@ import { Shell } from "../components/Shell";
 import { StatusBadge, statusIcon } from "../components/StatusBadge";
 import {
   isAttentionStatus,
+  isJoinRedirectReadyStatus,
   SESSION_LIFECYCLE_STATUSES,
   sessionLifecycleIndex,
   sessionStatusLabel,
@@ -40,6 +41,8 @@ export function SessionDetailPage() {
 
 function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSessionResponse }) {
   const session = detail.session;
+  const hasRuntime = Boolean(session.droplet_id || session.droplet_ip);
+  const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
   return (
     <>
       <div className="detail-head">
@@ -57,12 +60,20 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           <button className="danger" type="button">
             ⦿ End session
           </button>
-          <button className="button ghost" type="button">
-            ↻ Retry health check
-          </button>
-          <a className="button primary" href={`https://${domainFor(session)}`}>
-            ↗ Open room
-          </a>
+          {hasRuntime ? (
+            <button className="button ghost" type="button">
+              ↻ Retry health check
+            </button>
+          ) : null}
+          {canOpenRoom ? (
+            <a className="button primary" href={`https://${domainFor(session)}`}>
+              ↗ Open room
+            </a>
+          ) : (
+            <button className="button primary" disabled type="button">
+              Room not ready
+            </button>
+          )}
         </div>
       </div>
       {created ? <CreatedLinks created={created} /> : null}
@@ -87,12 +98,19 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           </span>
         </Info>
         <Info label="Live heartbeat">
-          <span className="healthy">● Healthy</span>
-          <small>Last seen 4s ago</small>
+          {session.last_heartbeat_at ? (
+            <>
+              <span className="healthy">● Healthy</span>
+              <small>Last seen {formatTime(session.last_heartbeat_at)}</small>
+            </>
+          ) : (
+            "—"
+          )}
         </Info>
         <Info label="Room domain">{domainFor(session)}</Info>
         <Info label="Slug">{session.slug}</Info>
         <Info label="DNS record ID">{value(session.dns_record_id)}</Info>
+        <Info label="Provision attempts">{session.provision_attempts}</Info>
         <Info label="Created">{formatDateTime(session.created_at)}</Info>
       </section>
       {session.last_error ? <FailureCard session={session} /> : null}
@@ -107,43 +125,52 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           <EventsCard events={detail.events} />
         </main>
         <aside className="diagnostic-stack">
-          <HealthCard
-            title="LiveKit"
-            icon="⌁"
-            rows={[
-              ["Room", session.slug],
-              ["Region", regionLabel(session.droplet_region)],
-              ["Uptime", "2h 14m 32s"],
-            ]}
-          />
-          <HealthCard
-            title="Recording server"
-            icon="⇩"
-            rows={[
-              ["Endpoint", `${value(session.droplet_ip)}:7880`],
-              ["Status", session.status === "active" ? "Recording" : "Ready"],
-              ["Uptime", "2h 14m 31s"],
-            ]}
-          />
-          <HealthCard
-            title="Disk"
-            icon="▣"
-            rows={[
-              ["Usage", "23.4 GB / 100 GB (23%)"],
-              ["Free space", "76.6 GB"],
-              ["I/O", "Normal"],
-            ]}
-            progress
-          />
-          <HealthCard
-            title="DNS"
-            icon="◎"
-            rows={[
-              ["Domain", domainFor(session)],
-              ["A record", value(session.droplet_ip)],
-              ["TTL", "60s"],
-            ]}
-          />
+          {hasRuntime ? (
+            <>
+              <HealthCard
+                title="LiveKit"
+                icon="⌁"
+                statusLabel={session.last_heartbeat_at ? "Healthy" : "Provisioned"}
+                rows={[
+                  ["Room", session.slug],
+                  ["Region", regionLabel(session.droplet_region)],
+                  ["Uptime", session.last_heartbeat_at ? "2h 14m 32s" : "—"],
+                ]}
+              />
+              <HealthCard
+                title="Recording server"
+                icon="⇩"
+                statusLabel={session.status === "active" ? "Recording" : "Provisioned"}
+                rows={[
+                  ["Endpoint", session.droplet_ip ? `${session.droplet_ip}:7880` : "—"],
+                  ["Status", session.status === "active" ? "Recording" : "Provisioned"],
+                  ["Uptime", session.last_heartbeat_at ? "2h 14m 31s" : "—"],
+                ]}
+              />
+              <HealthCard
+                title="Disk"
+                icon="▣"
+                statusLabel="Unknown"
+                rows={[
+                  ["Usage", "—"],
+                  ["Free space", "—"],
+                  ["I/O", "Unknown"],
+                ]}
+              />
+              <HealthCard
+                title="DNS"
+                icon="◎"
+                statusLabel={session.dns_record_id ? "Configured" : "Pending"}
+                rows={[
+                  ["Domain", value(session.room_domain)],
+                  ["A record", value(session.droplet_ip)],
+                  ["TTL", session.dns_record_id ? "60s" : "—"],
+                ]}
+              />
+            </>
+          ) : (
+            <ProvisioningDiagnostics session={session} />
+          )}
         </aside>
       </div>
     </>
@@ -156,6 +183,28 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
       <span className="info-label">{label}</span>
       <p>{children}</p>
     </div>
+  );
+}
+
+function ProvisioningDiagnostics({ session }: { session: Session }) {
+  return (
+    <section className="panel health-card">
+      <div className="health-head">
+        <h2>
+          <span>◎</span>
+          Provisioning
+        </h2>
+        <b>{session.status === "failed" ? "Needs attention" : "Pending"}</b>
+      </div>
+      <div className="health-row">
+        <span>Room server</span>
+        <strong>Not provisioned</strong>
+      </div>
+      <div className="health-row">
+        <span>Room domain</span>
+        <strong>{value(session.room_domain)}</strong>
+      </div>
+    </section>
   );
 }
 
@@ -326,11 +375,13 @@ function HealthCard({
   icon,
   rows,
   progress = false,
+  statusLabel = "Observed",
 }: {
   title: string;
   icon: string;
   rows: string[][];
   progress?: boolean;
+  statusLabel?: string;
 }) {
   return (
     <section className="panel health-card">
@@ -339,7 +390,7 @@ function HealthCard({
           <span>{icon}</span>
           {title}
         </h2>
-        <b>✓ Healthy</b>
+        <b>{statusLabel}</b>
       </div>
       {rows.map(([key, val]) => (
         <div className="health-row" key={key}>

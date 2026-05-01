@@ -82,6 +82,167 @@ func TestCreateSessionPersistsSessionTokensAndEvent(t *testing.T) {
 	}
 }
 
+func TestListProvisioningCandidatesReturnsCreatedOrderedAndBounded(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	for _, item := range []struct {
+		id        string
+		title     string
+		slug      string
+		updatedAt string
+		status    string
+	}{
+		{"sess_newest", "Newest Created", "newest-created", "2026-04-24T12:03:00.000000000Z", "created"},
+		{"sess_b", "Old Created B", "old-created-b", "2026-04-24T12:00:00.000000000Z", "created"},
+		{"sess_a", "Old Created A", "old-created-a", "2026-04-24T12:00:00.000000000Z", "created"},
+		{"sess_provisioning", "Already Provisioning", "already-provisioning", "2026-04-24T11:00:00.000000000Z", "provisioning"},
+	} {
+		if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, droplet_region, droplet_size, image_id, created_at, updated_at)
+values (?, ?, ?, ?, 'nyc3', 's-1vcpu-1gb', 'image', ?, ?);
+`, item.id, item.slug, item.title, item.status, item.updatedAt, item.updatedAt); err != nil {
+			t.Fatalf("insert session %q: %v", item.id, err)
+		}
+	}
+
+	candidates, err := repo.ListProvisioningCandidates(ctx, 2)
+	if err != nil {
+		t.Fatalf("ListProvisioningCandidates() error = %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("candidate count = %d", len(candidates))
+	}
+	if candidates[0].Slug != "old-created-a" || candidates[1].Slug != "old-created-b" {
+		t.Fatalf("candidate order = %q, %q", candidates[0].Slug, candidates[1].Slug)
+	}
+}
+
+func TestMarkProvisioningStartedTransitionsCreatedAndAppendsEvent(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Start Provisioning", Slug: "start-provisioning", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `update sessions set last_error = 'old', last_error_at = created_at, last_error_phase = 'old' where id = ?`, created.Session.ID); err != nil {
+		t.Fatalf("seed error fields: %v", err)
+	}
+	repo.now = func() time.Time { return time.Date(2026, 4, 24, 15, 0, 0, 0, time.UTC) }
+
+	changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("MarkProvisioningStarted() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("MarkProvisioningStarted() changed = false")
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "provisioning" || detail.Session.ProvisionAttempts != 1 {
+		t.Fatalf("session after transition = %+v", detail.Session)
+	}
+	if detail.Session.LastError != nil || detail.Session.LastErrorAt != nil || detail.Session.LastErrorPhase != nil {
+		t.Fatalf("error fields not cleared: %+v", detail.Session)
+	}
+	if detail.Session.UpdatedAt != "2026-04-24T15:00:00.000000000Z" {
+		t.Fatalf("updated_at = %q", detail.Session.UpdatedAt)
+	}
+	if len(detail.Events) != 2 || detail.Events[1].Type != "provisioning.started" || *detail.Events[1].Message != "Provisioning started" {
+		t.Fatalf("events = %+v", detail.Events)
+	}
+}
+
+func TestMarkProvisioningStartedNoOpsWhenNotCreated(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Started", Slug: "noop-started", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("first MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+	changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("second MarkProvisioningStarted() error = %v", err)
+	}
+	if changed {
+		t.Fatal("second MarkProvisioningStarted() changed = true")
+	}
+	detail, _ := repo.GetSession(ctx, created.Session.ID)
+	if detail.Session.ProvisionAttempts != 1 || len(detail.Events) != 2 {
+		t.Fatalf("duplicate transition persisted: %+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
+func TestMarkProvisioningFailedTransitionsProvisioningAndCapsError(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Fail Provisioning", Slug: "fail-provisioning", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+	repo.now = func() time.Time { return time.Date(2026, 4, 24, 16, 0, 0, 0, time.UTC) }
+
+	changed, err := repo.MarkProvisioningFailed(ctx, created.Session.ID, errors.New(strings.Repeat("x", 2100)))
+	if err != nil {
+		t.Fatalf("MarkProvisioningFailed() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("MarkProvisioningFailed() changed = false")
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "failed" || detail.Session.ProvisionAttempts != 1 {
+		t.Fatalf("session after failure = %+v", detail.Session)
+	}
+	if detail.Session.LastError == nil || len(*detail.Session.LastError) != 2000 {
+		t.Fatalf("last_error length = %v", detail.Session.LastError)
+	}
+	if detail.Session.LastErrorAt == nil || *detail.Session.LastErrorAt != "2026-04-24T16:00:00.000000000Z" {
+		t.Fatalf("last_error_at = %v", detail.Session.LastErrorAt)
+	}
+	if detail.Session.LastErrorPhase == nil || *detail.Session.LastErrorPhase != "provisioning" {
+		t.Fatalf("last_error_phase = %v", detail.Session.LastErrorPhase)
+	}
+	if len(detail.Events) != 3 || detail.Events[2].Type != "provisioning.failed" || *detail.Events[2].Message != "Provisioning failed" {
+		t.Fatalf("events = %+v", detail.Events)
+	}
+}
+
+func TestMarkProvisioningFailedNoOpsWhenNotProvisioning(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Failed", Slug: "noop-failed", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	changed, err := repo.MarkProvisioningFailed(ctx, created.Session.ID, errors.New("boom"))
+	if err != nil {
+		t.Fatalf("MarkProvisioningFailed() error = %v", err)
+	}
+	if changed {
+		t.Fatal("MarkProvisioningFailed() changed = true")
+	}
+	detail, _ := repo.GetSession(ctx, created.Session.ID)
+	if detail.Session.Status != "created" || detail.Session.LastError != nil || len(detail.Events) != 1 {
+		t.Fatalf("unexpected failure transition: %+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
 func TestIssueMachineTokenStoresHashAndEvent(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)

@@ -38,6 +38,7 @@ type ProvisioningSettings struct {
 	DefaultDropletSize  string
 	DefaultRegion       string
 	ImageID             string
+	ReconcileInterval   time.Duration
 	HealthCheckTimeout  time.Duration
 	FinalizationTimeout time.Duration
 }
@@ -101,6 +102,10 @@ func Load() (Config, error) {
 	}
 
 	var err error
+	cfg.Provisioning.ReconcileInterval, err = getDuration("REMOTE_TAPE_RECONCILE_INTERVAL", "5s")
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.Provisioning.HealthCheckTimeout, err = getDuration("REMOTE_TAPE_HEALTH_CHECK_TIMEOUT", "60s")
 	if err != nil {
 		return Config{}, err
@@ -177,6 +182,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Provisioning.ImageID) == "" {
 		errs = append(errs, errors.New("REMOTE_TAPE_IMAGE_ID is required"))
 	}
+	if c.Provisioning.ReconcileInterval <= 0 {
+		errs = append(errs, errors.New("REMOTE_TAPE_RECONCILE_INTERVAL must be positive"))
+	}
 	if c.Provisioning.HealthCheckTimeout <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_HEALTH_CHECK_TIMEOUT must be positive"))
 	}
@@ -248,6 +256,7 @@ func (c Config) LogAttrs() []any {
 		"default_droplet_size", c.Provisioning.DefaultDropletSize,
 		"default_region", c.Provisioning.DefaultRegion,
 		"image_id", c.Provisioning.ImageID,
+		"reconcile_interval", c.Provisioning.ReconcileInterval.String(),
 		"health_check_timeout", c.Provisioning.HealthCheckTimeout.String(),
 		"finalization_timeout", c.Provisioning.FinalizationTimeout.String(),
 		"admin_password_hash", c.Security.AdminPasswordHash.Redacted(),

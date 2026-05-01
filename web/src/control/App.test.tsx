@@ -243,6 +243,24 @@ describe("control app", () => {
     expect(screen.getByText("health_check")).toBeInTheDocument();
   });
 
+  it("renders provisioning attempt visibility on session detail", async () => {
+    renderApp("/sessions/sess_joinable_provisioning_failed?scenario=provisioning_failed");
+
+    expect(
+      await screen.findByText("DigitalOcean create droplet request failed: rate limited"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("provisioning").length).toBeGreaterThan(0);
+    expect(screen.getByText("provisioning.started")).toBeInTheDocument();
+    expect(screen.getByText("provisioning.failed")).toBeInTheDocument();
+    expect(screen.getByText("Provision attempts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Room not ready" })).toBeDisabled();
+    expect(screen.getByText("Room server")).toBeInTheDocument();
+    expect(screen.getByText("Not provisioned")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "↗ Open room" })).not.toBeInTheDocument();
+    expect(screen.queryByText("LiveKit")).not.toBeInTheDocument();
+    expect(screen.queryByText("● Healthy")).not.toBeInTheDocument();
+  });
+
   it("renders manual download instructions when recordings await host download", async () => {
     renderApp("/sessions/sess_joinable_awaiting_manual_download?scenario=awaiting_manual_download");
 
@@ -287,11 +305,19 @@ describe("control app", () => {
     expect(await response.json()).toMatchObject({ error: "session slug already exists" });
   });
 
-  it("renders the join waiting state for a valid guest token", async () => {
+  it("renders the join queued state for a valid guest token", async () => {
+    renderApp("/join/joinable?token=guest-token&scenario=created");
+
+    expect(await screen.findByText("Queued for provisioning.")).toBeInTheDocument();
+    expect(screen.getByText("You're joining as")).toBeInTheDocument();
+    expect(screen.getByText("guest")).toBeInTheDocument();
+  });
+
+  it("renders the join provisioning state for a valid guest token", async () => {
     renderApp("/join/joinable?token=guest-token&scenario=provisioning");
 
-    expect(await screen.findByText("Provisioning your room")).toBeInTheDocument();
-    expect(screen.getByText("You're joining as")).toBeInTheDocument();
+    expect(await screen.findByText("Provisioning the room server.")).toBeInTheDocument();
+    expect(screen.getByText("Provisioning your room")).toBeInTheDocument();
     expect(screen.getByText("guest")).toBeInTheDocument();
   });
 
@@ -327,15 +353,15 @@ describe("control app", () => {
     expect(screen.queryByText("Provisioning your room")).not.toBeInTheDocument();
   });
 
-  it("renders failed join links as unavailable without waiting UI", async () => {
-    renderApp("/join/joinable?token=guest-token&scenario=failed");
+  it("renders provisioning-failed join links as unavailable without waiting UI", async () => {
+    renderApp("/join/joinable?token=guest-token&scenario=provisioning_failed");
 
     expect(await screen.findByText("Session unavailable")).toBeInTheDocument();
     expect(
       screen.getByText("This session failed before it became joinable.", { exact: false }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Polling every 5 seconds")).not.toBeInTheDocument();
-    expect(screen.queryByText("Creating droplet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
   });
 
   it("renders invalid join tokens from the API", async () => {
