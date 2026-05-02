@@ -48,6 +48,7 @@ func setRunTestEnv(t *testing.T, httpAddr string, databasePath string) {
 		"REMOTE_TAPE_FAILED_SESSION_TTL",
 		"REMOTE_TAPE_LOGS_RETENTION",
 		"REMOTE_TAPE_DIGITALOCEAN_API_TOKEN",
+		"REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS",
 		"REMOTE_TAPE_CLOUDFLARE_API_TOKEN",
 	} {
 		t.Setenv(name, "")
@@ -58,4 +59,6 @@ func setRunTestEnv(t *testing.T, httpAddr string, databasePath string) {
 	t.Setenv("REMOTE_TAPE_DEV_ADMIN_PASSWORD", "dev-password")
 	t.Setenv("REMOTE_TAPE_COOKIE_AUTH_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("REMOTE_TAPE_DIGITALOCEAN_API_TOKEN", "dop_v1_test")
+	t.Setenv("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS", "12345")
 }

@@ -263,33 +263,15 @@ order by updated_at desc, created_at desc, id desc;
 }
 
 func (r *Repository) ListProvisioningCandidates(ctx context.Context, limit int) ([]Session, error) {
-	if limit <= 0 {
-		return nil, fmt.Errorf("%w: provisioning candidate limit must be positive", ErrInvalidInput)
-	}
-	rows, err := r.db.QueryContext(ctx, `
-select `+sessionColumns+`
-from sessions
-where status = 'created'
-order by updated_at asc, id asc
-limit ?;
-`, limit)
-	if err != nil {
-		return nil, fmt.Errorf("list provisioning candidates: %w", err)
-	}
-	defer rows.Close()
+	return r.listSessionsByStatus(ctx, "created", limit, "provisioning candidate")
+}
 
-	var sessions []Session
-	for rows.Next() {
-		s, err := scanSession(rows)
-		if err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list provisioning candidates: %w", err)
-	}
-	return sessions, nil
+func (r *Repository) ListProvisioningSessions(ctx context.Context, limit int) ([]Session, error) {
+	return r.listSessionsByStatus(ctx, "provisioning", limit, "provisioning session")
+}
+
+func (r *Repository) ListTearingDownSessions(ctx context.Context, limit int) ([]Session, error) {
+	return r.listSessionsByStatus(ctx, "tearing_down", limit, "tearing down session")
 }
 
 func (r *Repository) MarkProvisioningStarted(ctx context.Context, sessionID string) (bool, error) {
@@ -298,13 +280,9 @@ func (r *Repository) MarkProvisioningStarted(ctx context.Context, sessionID stri
 		return false, ErrNotFound
 	}
 	now := formatSQLiteTime(r.now())
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, fmt.Errorf("begin mark provisioning started: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.ExecContext(ctx, `
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark provisioning started",
+		query: `
 update sessions
 set status = 'provisioning',
     provision_attempts = provision_attempts + 1,
@@ -313,24 +291,201 @@ set status = 'provisioning',
     last_error_phase = null,
     updated_at = ?
 where id = ? and status = 'created';
-`, now, sessionID)
+`,
+		args:         []any{now, sessionID},
+		eventType:    "provisioning.started",
+		eventMessage: "Provisioning started",
+		at:           now,
+	})
+}
+
+type DropletAssignmentResult struct {
+	Accepted bool
+	Changed  bool
+	Status   string
+}
+
+func (r *Repository) AssignDroplet(ctx context.Context, sessionID string, dropletID string, dropletIP string, adopted bool) (DropletAssignmentResult, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	dropletID = strings.TrimSpace(dropletID)
+	dropletIP = strings.TrimSpace(dropletIP)
+	if sessionID == "" || dropletID == "" {
+		return DropletAssignmentResult{}, ErrNotFound
+	}
+	now := formatSQLiteTime(r.now())
+	nextStatus := "provisioning"
+	if dropletIP != "" {
+		nextStatus = "waiting_for_dns"
+	}
+	eventType := "provisioning.droplet_created"
+	message := "Session droplet created"
+	if adopted {
+		eventType = "provisioning.droplet_adopted"
+		message = "Existing session droplet adopted"
+	}
+	if dropletIP == "" {
+		eventType = "provisioning.waiting_for_ip"
+		message = "Session droplet assigned; waiting for public IPv4"
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("mark provisioning started: %w", err)
+		return DropletAssignmentResult{}, fmt.Errorf("begin assign droplet: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentStatus string
+	var existingDropletID, existingDropletIP sql.NullString
+	err = tx.QueryRowContext(ctx, `select status, droplet_id, droplet_ip from sessions where id = ?;`, sessionID).Scan(&currentStatus, &existingDropletID, &existingDropletIP)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DropletAssignmentResult{}, nil
+	}
+	if err != nil {
+		return DropletAssignmentResult{}, fmt.Errorf("read session before assign droplet: %w", err)
+	}
+	if currentStatus == "tearing_down" {
+		if existingDropletID.Valid && existingDropletID.String == dropletID && nullStringValue(existingDropletIP) == dropletIP {
+			return DropletAssignmentResult{Accepted: true, Status: currentStatus}, nil
+		}
+		result, err := tx.ExecContext(ctx, `
+update sessions
+set droplet_id = ?,
+    droplet_ip = nullif(?, ''),
+    updated_at = ?
+where id = ? and status = 'tearing_down';
+`, dropletID, dropletIP, now, sessionID)
+		if err != nil {
+			return DropletAssignmentResult{}, fmt.Errorf("assign droplet during teardown: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return DropletAssignmentResult{}, fmt.Errorf("read teardown droplet assignment rows affected: %w", err)
+		}
+		if changed == 0 {
+			return DropletAssignmentResult{}, nil
+		}
+		if _, err := appendEvent(ctx, tx, sessionID, "teardown.droplet_discovered", "Session droplet discovered after force destroy request", nil, now); err != nil {
+			return DropletAssignmentResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return DropletAssignmentResult{}, fmt.Errorf("commit teardown droplet assignment: %w", err)
+		}
+		return DropletAssignmentResult{Accepted: true, Changed: true, Status: currentStatus}, nil
+	}
+	if currentStatus != "provisioning" {
+		return DropletAssignmentResult{Status: currentStatus}, nil
+	}
+	if dropletIP == "" && existingDropletID.Valid && existingDropletID.String == dropletID && !existingDropletIP.Valid {
+		return DropletAssignmentResult{Accepted: true, Status: currentStatus}, nil
+	}
+
+	result, err := tx.ExecContext(ctx, `
+update sessions
+set status = ?,
+    droplet_id = ?,
+    droplet_ip = nullif(?, ''),
+    last_error = null,
+    last_error_at = null,
+    last_error_phase = null,
+    updated_at = ?
+where id = ? and status = 'provisioning';
+`, nextStatus, dropletID, dropletIP, now, sessionID)
+	if err != nil {
+		return DropletAssignmentResult{}, fmt.Errorf("assign droplet: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("read provisioning started rows affected: %w", err)
+		return DropletAssignmentResult{}, fmt.Errorf("read assign droplet rows affected: %w", err)
 	}
 	if changed == 0 {
-		return false, nil
+		return DropletAssignmentResult{}, nil
 	}
-	if _, err := appendEvent(ctx, tx, sessionID, "provisioning.started", "Provisioning started", nil, now); err != nil {
-		return false, err
+	if _, err := appendEvent(ctx, tx, sessionID, eventType, message, nil, now); err != nil {
+		return DropletAssignmentResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit mark provisioning started: %w", err)
+		return DropletAssignmentResult{}, fmt.Errorf("commit assign droplet: %w", err)
 	}
-	return true, nil
+	return DropletAssignmentResult{Accepted: true, Changed: true, Status: nextStatus}, nil
+}
+
+func (r *Repository) MarkForceDestroyStarted(ctx context.Context, sessionID string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	now := formatSQLiteTime(r.now())
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark force destroy started",
+		query: `
+update sessions
+set status = 'tearing_down',
+    last_error = null,
+    last_error_at = null,
+    last_error_phase = null,
+    updated_at = ?
+where id = ? and status in ('provisioning', 'waiting_for_dns', 'failed');
+`,
+		args:         []any{now, sessionID},
+		eventType:    "session.force_destroy_started",
+		eventMessage: "Force destroy session server started",
+		at:           now,
+	})
+}
+
+func (r *Repository) MarkForceDestroyed(ctx context.Context, sessionID string, dropletID string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	dropletID = strings.TrimSpace(dropletID)
+	now := formatSQLiteTime(r.now())
+	message := "Session server force destroyed"
+	if dropletID != "" {
+		message += " (droplet " + dropletID + ")"
+	}
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark force destroyed",
+		query: `
+update sessions
+set status = 'ended',
+    ended_at = ?,
+    last_error = null,
+    last_error_at = null,
+    last_error_phase = null,
+    updated_at = ?
+where id = ? and status = 'tearing_down';
+`,
+		args:         []any{now, now, sessionID},
+		eventType:    "session.force_destroyed",
+		eventMessage: message,
+		at:           now,
+	})
+}
+
+func (r *Repository) MarkForceDestroyFailed(ctx context.Context, sessionID string, cause error) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	now := formatSQLiteTime(r.now())
+	message := capErrorMessage(cause)
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark force destroy failed",
+		query: `
+update sessions
+set status = 'failed',
+    last_error = ?,
+    last_error_at = ?,
+    last_error_phase = 'teardown',
+    updated_at = ?
+where id = ? and status = 'tearing_down';
+`,
+		args:         []any{message, now, now, sessionID},
+		eventType:    "session.force_destroy_failed",
+		eventMessage: "Force destroy session server failed",
+		at:           now,
+	})
 }
 
 func (r *Repository) MarkProvisioningFailed(ctx context.Context, sessionID string, cause error) (bool, error) {
@@ -340,13 +495,9 @@ func (r *Repository) MarkProvisioningFailed(ctx context.Context, sessionID strin
 	}
 	now := formatSQLiteTime(r.now())
 	message := capErrorMessage(cause)
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, fmt.Errorf("begin mark provisioning failed: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.ExecContext(ctx, `
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark provisioning failed",
+		query: `
 update sessions
 set status = 'failed',
     last_error = ?,
@@ -354,24 +505,12 @@ set status = 'failed',
     last_error_phase = 'provisioning',
     updated_at = ?
 where id = ? and status = 'provisioning';
-`, message, now, now, sessionID)
-	if err != nil {
-		return false, fmt.Errorf("mark provisioning failed: %w", err)
-	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read provisioning failed rows affected: %w", err)
-	}
-	if changed == 0 {
-		return false, nil
-	}
-	if _, err := appendEvent(ctx, tx, sessionID, "provisioning.failed", "Provisioning failed", nil, now); err != nil {
-		return false, err
-	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit mark provisioning failed: %w", err)
-	}
-	return true, nil
+`,
+		args:         []any{message, now, now, sessionID},
+		eventType:    "provisioning.failed",
+		eventMessage: "Provisioning failed",
+		at:           now,
+	})
 }
 
 func (r *Repository) GetSession(ctx context.Context, id string) (Detail, error) {
@@ -491,6 +630,36 @@ update sessions set machine_token_hash = ?, updated_at = ? where id = ?;
 	return MachineTokenIssue{SessionID: sessionID, Token: token, EventID: eventID}, nil
 }
 
+func (r *Repository) listSessionsByStatus(ctx context.Context, status string, limit int, label string) ([]Session, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("%w: %s limit must be positive", ErrInvalidInput, label)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+select `+sessionColumns+`
+from sessions
+where status = ?
+order by updated_at asc, id asc
+limit ?;
+`, status, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list %ss: %w", label, err)
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list %ss: %w", label, err)
+	}
+	return sessions, nil
+}
+
 func (r *Repository) slugExists(ctx context.Context, slug string) (bool, error) {
 	var found string
 	err := r.db.QueryRowContext(ctx, `select slug from sessions where slug = ?;`, slug).Scan(&found)
@@ -561,6 +730,42 @@ type queryer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
+type sessionTransition struct {
+	operation    string
+	query        string
+	args         []any
+	eventType    string
+	eventMessage string
+	at           string
+}
+
+func (r *Repository) execSessionTransition(ctx context.Context, sessionID string, transition sessionTransition) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin %s: %w", transition.operation, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, transition.query, transition.args...)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", transition.operation, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read %s rows affected: %w", transition.operation, err)
+	}
+	if changed == 0 {
+		return false, nil
+	}
+	if _, err := appendEvent(ctx, tx, sessionID, transition.eventType, transition.eventMessage, nil, transition.at); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit %s: %w", transition.operation, err)
+	}
+	return true, nil
+}
+
 func appendEvent(ctx context.Context, q queryer, sessionID string, eventType string, message string, metadataJSON *string, createdAt string) (int64, error) {
 	var messageArg any
 	if strings.TrimSpace(message) != "" {
@@ -585,6 +790,13 @@ func messageValue(message *string) string {
 		return ""
 	}
 	return *message
+}
+
+func nullStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
 }
 
 func capErrorMessage(cause error) string {

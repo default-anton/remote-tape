@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/provisioning"
 	"github.com/default-anton/remote-tape/internal/session"
 )
 
@@ -21,19 +22,19 @@ func TestStepMovesCreatedSessionsToProvisioning(t *testing.T) {
 	first := createTestSession(t, ctx, repo, "First", "first")
 	second := createTestSession(t, ctx, repo, "Second", "second")
 
-	r := New(repo, discardLogger(), Options{})
+	r := New(repo, fakeProvisioner{}, discardLogger(), Options{})
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("Step() error = %v", err)
 	}
 
-	assertStatus(t, ctx, repo, first.Session.ID, "provisioning", 1, 2)
-	assertStatus(t, ctx, repo, second.Session.ID, "provisioning", 1, 2)
+	assertStatus(t, ctx, repo, first.Session.ID, "waiting_for_dns", 1, 3)
+	assertStatus(t, ctx, repo, second.Session.ID, "waiting_for_dns", 1, 3)
 }
 
 func TestStepUsesConfiguredBatchSize(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeStore{candidates: []session.Session{{ID: "sess_one"}, {ID: "sess_two"}, {ID: "sess_three"}}}
-	r := newReconciler(store, discardLogger(), Options{BatchSize: 2})
+	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{BatchSize: 2})
 
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("Step() error = %v", err)
@@ -47,7 +48,7 @@ func TestStepIsIdempotentForAlreadyClaimedSessions(t *testing.T) {
 	ctx := context.Background()
 	repo := openReconcilerTestRepo(t, ctx)
 	created := createTestSession(t, ctx, repo, "Once", "once")
-	r := New(repo, discardLogger(), Options{})
+	r := New(repo, fakeProvisioner{}, discardLogger(), Options{})
 
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("first Step() error = %v", err)
@@ -55,7 +56,50 @@ func TestStepIsIdempotentForAlreadyClaimedSessions(t *testing.T) {
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("second Step() error = %v", err)
 	}
-	assertStatus(t, ctx, repo, created.Session.ID, "provisioning", 1, 2)
+	assertStatus(t, ctx, repo, created.Session.ID, "waiting_for_dns", 1, 3)
+}
+
+func TestStepDestroysDropletCreatedAfterForceDestroyRequest(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	created := createTestSession(t, ctx, repo, "Race", "race")
+	provisioner := newBlockingProvisioner(provisioning.DropletResult{ID: "789", IP: "203.0.113.89"})
+	r := New(repo, provisioner, discardLogger(), Options{})
+	done := make(chan error, 1)
+
+	go func() {
+		done <- r.Step(ctx)
+	}()
+
+	select {
+	case <-provisioner.ensureStarted:
+	case <-time.After(time.Second):
+		t.Fatal("EnsureDroplet was not called")
+	}
+	if changed, err := repo.MarkForceDestroyStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	close(provisioner.releaseEnsure)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Step() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Step() did not finish")
+	}
+
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "ended" || detail.Session.DropletID == nil || *detail.Session.DropletID != "789" {
+		t.Fatalf("session after race = %+v", detail.Session)
+	}
+	if got := provisioner.destroyedID(); got != "789" {
+		t.Fatalf("destroyed droplet id = %q", got)
+	}
 }
 
 func TestStepKeepsProcessingAfterCandidateFailure(t *testing.T) {
@@ -64,7 +108,7 @@ func TestStepKeepsProcessingAfterCandidateFailure(t *testing.T) {
 		candidates: []session.Session{{ID: "sess_bad"}, {ID: "sess_good"}},
 		fail:       map[string]error{"sess_bad": errors.New("database busy")},
 	}
-	r := newReconciler(store, discardLogger(), Options{})
+	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{})
 
 	err := r.Step(ctx)
 	if err == nil || !strings.Contains(err.Error(), "sess_bad") {
@@ -78,7 +122,7 @@ func TestStepKeepsProcessingAfterCandidateFailure(t *testing.T) {
 func TestRunStepsImmediatelyAndThenTicksUntilCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	store := &fakeStore{candidates: []session.Session{{ID: "sess_one"}}}
-	r := newReconciler(store, discardLogger(), Options{Interval: time.Hour})
+	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{Interval: time.Hour})
 	done := make(chan struct{})
 
 	go func() {
@@ -102,7 +146,7 @@ func TestRunLogsStepErrorsAndContinues(t *testing.T) {
 		candidates: []session.Session{{ID: "sess_flaky"}},
 		fail:       map[string]error{"sess_flaky": errors.New("temporary failure")},
 	}
-	r := newReconciler(store, discardLogger(), Options{Interval: time.Millisecond})
+	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{Interval: time.Millisecond})
 	done := make(chan struct{})
 
 	go func() {
@@ -146,6 +190,73 @@ func (s *fakeStore) MarkProvisioningStarted(_ context.Context, sessionID string)
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *fakeStore) ListProvisioningSessions(context.Context, int) ([]session.Session, error) {
+	return nil, nil
+}
+
+func (s *fakeStore) ListTearingDownSessions(context.Context, int) ([]session.Session, error) {
+	return nil, nil
+}
+
+func (s *fakeStore) AssignDroplet(context.Context, string, string, string, bool) (session.DropletAssignmentResult, error) {
+	return session.DropletAssignmentResult{Accepted: true, Changed: true, Status: "waiting_for_dns"}, nil
+}
+
+func (s *fakeStore) MarkProvisioningFailed(context.Context, string, error) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) MarkForceDestroyed(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) MarkForceDestroyFailed(context.Context, string, error) (bool, error) {
+	return true, nil
+}
+
+type fakeProvisioner struct{}
+
+func (fakeProvisioner) EnsureDroplet(context.Context, session.Session) (provisioning.DropletResult, error) {
+	return provisioning.DropletResult{ID: "123", IP: "203.0.113.10"}, nil
+}
+
+func (fakeProvisioner) ForceDestroySessionServer(context.Context, session.Session) (provisioning.DestroyResult, error) {
+	return provisioning.DestroyResult{DropletID: "123"}, nil
+}
+
+type blockingProvisioner struct {
+	result        provisioning.DropletResult
+	ensureStarted chan struct{}
+	releaseEnsure chan struct{}
+	mu            sync.Mutex
+	destroyed     string
+}
+
+func newBlockingProvisioner(result provisioning.DropletResult) *blockingProvisioner {
+	return &blockingProvisioner{result: result, ensureStarted: make(chan struct{}), releaseEnsure: make(chan struct{})}
+}
+
+func (p *blockingProvisioner) EnsureDroplet(context.Context, session.Session) (provisioning.DropletResult, error) {
+	close(p.ensureStarted)
+	<-p.releaseEnsure
+	return p.result, nil
+}
+
+func (p *blockingProvisioner) ForceDestroySessionServer(_ context.Context, s session.Session) (provisioning.DestroyResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if s.DropletID != nil {
+		p.destroyed = *s.DropletID
+	}
+	return provisioning.DestroyResult{DropletID: p.destroyed}, nil
+}
+
+func (p *blockingProvisioner) destroyedID() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.destroyed
 }
 
 func (s *fakeStore) stepCalls() int {

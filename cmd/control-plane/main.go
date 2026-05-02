@@ -15,6 +15,7 @@ import (
 	"github.com/default-anton/remote-tape/internal/config"
 	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/provisioning"
 	"github.com/default-anton/remote-tape/internal/reconciler"
 	"github.com/default-anton/remote-tape/internal/server"
 	"github.com/default-anton/remote-tape/internal/session"
@@ -68,6 +69,14 @@ func run(ctx context.Context) int {
 	)
 
 	sessionRepo := session.NewRepository(db)
+	provisioner, err := provisioning.NewDigitalOceanProvisioner(provisioning.DigitalOceanConfig{
+		APIToken: string(cfg.Security.DigitalOceanAPIToken),
+		SSHKeys:  cfg.Provisioning.DigitalOceanSSHKeys,
+	})
+	if err != nil {
+		logger.ErrorContext(ctx, "digitalocean provisioner initialization failed", "error", err)
+		return 1
+	}
 
 	listener, err := net.Listen("tcp", cfg.General.HTTPAddr)
 	if err != nil {
@@ -88,7 +97,7 @@ func run(ctx context.Context) int {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	rec := reconciler.New(sessionRepo, logger, reconciler.Options{Interval: cfg.Provisioning.ReconcileInterval})
+	rec := reconciler.New(sessionRepo, provisioner, logger, reconciler.Options{Interval: cfg.Provisioning.ReconcileInterval})
 	reconcileCtx, stopReconciler := context.WithCancel(ctx)
 	reconcilerDone := make(chan struct{})
 	go func() {

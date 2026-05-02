@@ -243,6 +243,142 @@ func TestMarkProvisioningFailedNoOpsWhenNotProvisioning(t *testing.T) {
 	}
 }
 
+func TestAssignDropletTransitionsAndWaitingForIP(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Assign Droplet", Slug: "assign-droplet", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+
+	assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "123", "", false)
+	if err != nil || !assignment.Changed || !assignment.Accepted {
+		t.Fatalf("AssignDroplet(no ip) assignment=%+v error=%v", assignment, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "provisioning" || detail.Session.DropletID == nil || *detail.Session.DropletID != "123" || detail.Session.DropletIP != nil {
+		t.Fatalf("session after no-ip assign = %+v", detail.Session)
+	}
+	if detail.Events[len(detail.Events)-1].Type != "provisioning.waiting_for_ip" {
+		t.Fatalf("last event = %+v", detail.Events[len(detail.Events)-1])
+	}
+
+	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "", false)
+	if err != nil {
+		t.Fatalf("AssignDroplet(repeated no ip) error = %v", err)
+	}
+	if assignment.Changed || !assignment.Accepted {
+		t.Fatalf("AssignDroplet repeated no-ip assignment = %+v", assignment)
+	}
+	detail, err = repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if len(detail.Events) != 3 {
+		t.Fatalf("repeated no-ip assignment appended events = %+v", detail.Events)
+	}
+
+	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", true)
+	if err != nil || !assignment.Changed || !assignment.Accepted {
+		t.Fatalf("AssignDroplet(with ip) assignment=%+v error=%v", assignment, err)
+	}
+	detail, err = repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "waiting_for_dns" || detail.Session.DropletIP == nil || *detail.Session.DropletIP != "203.0.113.10" {
+		t.Fatalf("session after ip assign = %+v", detail.Session)
+	}
+	if detail.Events[len(detail.Events)-1].Type != "provisioning.droplet_adopted" {
+		t.Fatalf("last event = %+v", detail.Events[len(detail.Events)-1])
+	}
+
+	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", true)
+	if err != nil {
+		t.Fatalf("AssignDroplet(noop) error = %v", err)
+	}
+	if assignment.Changed || assignment.Accepted {
+		t.Fatalf("AssignDroplet outside provisioning assignment = %+v", assignment)
+	}
+}
+
+func TestForceDestroyLifecycle(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy", Slug: "force-destroy", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+	if assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", false); err != nil || !assignment.Changed {
+		t.Fatalf("AssignDroplet() assignment=%+v error=%v", assignment, err)
+	}
+
+	changed, err := repo.MarkForceDestroyStarted(ctx, created.Session.ID)
+	if err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "tearing_down" || detail.Events[len(detail.Events)-1].Type != "session.force_destroy_started" {
+		t.Fatalf("after force destroy start session=%+v events=%+v", detail.Session, detail.Events)
+	}
+	if assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "456", "203.0.113.11", false); err != nil || !assignment.Changed || !assignment.Accepted {
+		t.Fatalf("AssignDroplet while tearing_down assignment=%+v error=%v", assignment, err)
+	}
+	if changed, err := repo.MarkForceDestroyed(ctx, created.Session.ID, "456"); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyed() changed=%v error=%v", changed, err)
+	}
+	detail, err = repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "ended" || detail.Session.EndedAt == nil || detail.Events[len(detail.Events)-1].Type != "session.force_destroyed" {
+		t.Fatalf("after force destroyed session=%+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
+func TestForceDestroyFailureReturnsToFailedForRetry(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy Failure", Slug: "force-destroy-failure", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `update sessions set status = 'failed' where id = ?;`, created.Session.ID); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+	if changed, err := repo.MarkForceDestroyStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	if changed, err := repo.MarkForceDestroyFailed(ctx, created.Session.ID, errors.New("digitalocean unavailable")); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyFailed() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "failed" || detail.Session.LastError == nil || *detail.Session.LastError != "digitalocean unavailable" || detail.Session.LastErrorPhase == nil || *detail.Session.LastErrorPhase != "teardown" {
+		t.Fatalf("after force destroy failed session=%+v", detail.Session)
+	}
+	if detail.Events[len(detail.Events)-1].Type != "session.force_destroy_failed" {
+		t.Fatalf("last event = %+v", detail.Events[len(detail.Events)-1])
+	}
+}
+
 func TestIssueMachineTokenStoresHashAndEvent(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)

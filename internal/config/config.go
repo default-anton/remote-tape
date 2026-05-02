@@ -38,6 +38,7 @@ type ProvisioningSettings struct {
 	DefaultDropletSize  string
 	DefaultRegion       string
 	ImageID             string
+	DigitalOceanSSHKeys []string
 	ReconcileInterval   time.Duration
 	HealthCheckTimeout  time.Duration
 	FinalizationTimeout time.Duration
@@ -86,9 +87,10 @@ func Load() (Config, error) {
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
 		},
 		Provisioning: ProvisioningSettings{
-			DefaultDropletSize: getEnv("REMOTE_TAPE_DEFAULT_DROPLET_SIZE", "s-2vcpu-2gb"),
-			DefaultRegion:      getEnv("REMOTE_TAPE_DEFAULT_REGION", "nyc3"),
-			ImageID:            getEnv("REMOTE_TAPE_IMAGE_ID", "ubuntu-24-04-x64"),
+			DefaultDropletSize:  getEnv("REMOTE_TAPE_DEFAULT_DROPLET_SIZE", "s-2vcpu-2gb"),
+			DefaultRegion:       getEnv("REMOTE_TAPE_DEFAULT_REGION", "nyc3"),
+			ImageID:             getEnv("REMOTE_TAPE_IMAGE_ID", "ubuntu-24-04-x64"),
+			DigitalOceanSSHKeys: splitCSV(os.Getenv("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS")),
 		},
 		Security: SecuritySettings{
 			AdminPasswordHash:    SensitiveString(os.Getenv("REMOTE_TAPE_ADMIN_PASSWORD_HASH")),
@@ -191,6 +193,12 @@ func (c Config) Validate() error {
 	if c.Provisioning.FinalizationTimeout <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_FINALIZATION_TIMEOUT must be positive"))
 	}
+	if !c.Security.DigitalOceanAPIToken.Set() {
+		errs = append(errs, errors.New("REMOTE_TAPE_DIGITALOCEAN_API_TOKEN is required"))
+	}
+	if len(c.Provisioning.DigitalOceanSSHKeys) == 0 {
+		errs = append(errs, errors.New("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS is required"))
+	}
 	if !c.Security.AdminPasswordHash.Set() && !(c.General.Environment == EnvironmentDevelopment && c.Security.DevAdminPassword.Set()) {
 		errs = append(errs, errors.New("REMOTE_TAPE_ADMIN_PASSWORD_HASH is required unless REMOTE_TAPE_DEV_ADMIN_PASSWORD is set in development"))
 	}
@@ -256,6 +264,7 @@ func (c Config) LogAttrs() []any {
 		"default_droplet_size", c.Provisioning.DefaultDropletSize,
 		"default_region", c.Provisioning.DefaultRegion,
 		"image_id", c.Provisioning.ImageID,
+		"digitalocean_ssh_key_count", len(c.Provisioning.DigitalOceanSSHKeys),
 		"reconcile_interval", c.Provisioning.ReconcileInterval.String(),
 		"health_check_timeout", c.Provisioning.HealthCheckTimeout.String(),
 		"finalization_timeout", c.Provisioning.FinalizationTimeout.String(),
@@ -281,6 +290,17 @@ func getEnv(name, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func splitCSV(value string) []string {
+	var values []string
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }
 
 func getPositiveInt(name string, fallback int) (int, error) {

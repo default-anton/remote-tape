@@ -11,6 +11,8 @@ func TestDefaultLoad(t *testing.T) {
 	t.Setenv("REMOTE_TAPE_DEV_ADMIN_PASSWORD", "dev-password")
 	t.Setenv("REMOTE_TAPE_COOKIE_AUTH_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("REMOTE_TAPE_COOKIE_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("REMOTE_TAPE_DIGITALOCEAN_API_TOKEN", "dop_v1_test")
+	t.Setenv("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS", "12345")
 
 	cfg, err := Load()
 	if err != nil {
@@ -121,12 +123,14 @@ func validConfig() Config {
 			DefaultDropletSize:  "s-2vcpu-2gb",
 			DefaultRegion:       "nyc3",
 			ImageID:             "ubuntu-24-04-x64",
+			DigitalOceanSSHKeys: []string{"12345"},
 			ReconcileInterval:   5 * time.Second,
 			HealthCheckTimeout:  time.Minute,
 			FinalizationTimeout: 15 * time.Minute,
 		},
 		Security: SecuritySettings{
 			AdminPasswordHash:          "$2a$10$Y9JdDULWeDYyi7vG2dSAf.KExPZ5RIZX.38y93Stah1DzqleV5E7.",
+			DigitalOceanAPIToken:       "dop_v1_test",
 			CookieAuthKey:              "0123456789abcdef0123456789abcdef",
 			CookieEncryptionKey:        "0123456789abcdef0123456789abcdef",
 			AdminCookieSessionDuration: 7 * 24 * time.Hour,
@@ -169,6 +173,7 @@ func clearEnv(t *testing.T) {
 		"REMOTE_TAPE_FAILED_SESSION_TTL",
 		"REMOTE_TAPE_LOGS_RETENTION",
 		"REMOTE_TAPE_DIGITALOCEAN_API_TOKEN",
+		"REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS",
 		"REMOTE_TAPE_CLOUDFLARE_API_TOKEN",
 	} {
 		t.Setenv(name, "")
