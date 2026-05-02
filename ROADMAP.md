@@ -62,9 +62,7 @@ Demo:
 Create session -> reconciler advances it to provisioning -> timeline shows the provisioning attempt -> failures persist visibly
 ```
 
-## Current slice
-
-### Slice 5: real DigitalOcean provisioner
+### Slice 5: real DigitalOcean provisioner — implemented
 
 - create droplet
 - tag droplet
@@ -72,6 +70,7 @@ Create session -> reconciler advances it to provisioning -> timeline shows the p
 - persist droplet ID/IP
 - retry safely after partial failure
 - emit lifecycle events for create/adopt/failure
+- force destroy session server escape hatch for early lifecycle states
 
 Demo:
 
@@ -79,7 +78,7 @@ Demo:
 Create session -> real droplet appears -> session status updates -> timeline shows each step
 ```
 
-## Upcoming slices
+## Current slice
 
 ### Slice 6: Cloudflare DNS
 
