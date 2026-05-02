@@ -68,8 +68,8 @@ export function createControlMockApi(): ControlMockApi {
         id: `sess_${slug.replaceAll("-", "_")}`,
         slug,
         title,
-        droplet_region: input.droplet_region?.trim() || "nyc3",
-        droplet_size: input.droplet_size?.trim() || "s-2vcpu-2gb",
+        instance_region: input.instance_region?.trim() || "nyc3",
+        instance_size: input.instance_size?.trim() || "s-2vcpu-2gb",
       });
       const created = {
         session,

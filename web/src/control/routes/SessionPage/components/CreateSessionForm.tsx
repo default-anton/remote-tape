@@ -16,8 +16,8 @@ export function CreateSessionForm({
   onSubmit: (input: {
     title: string;
     slug?: string;
-    droplet_region?: string;
-    droplet_size?: string;
+    instance_region?: string;
+    instance_size?: string;
   }) => void;
 }) {
   const location = useLocation();
@@ -32,8 +32,8 @@ export function CreateSessionForm({
     onSubmit({
       title,
       slug: blankAsUndefined(slug),
-      droplet_region: blankAsUndefined(region),
-      droplet_size: blankAsUndefined(size),
+      instance_region: blankAsUndefined(region),
+      instance_size: blankAsUndefined(size),
     });
   }
 
@@ -91,8 +91,8 @@ export function CreateSessionForm({
           </div>
         </Field>
         <Field
-          label="Droplet size"
-          help="Larger droplets provide more headroom for high-bitrate recordings."
+          label="Instance size"
+          help="Larger instances provide more headroom for high-bitrate recordings."
         >
           <div className="input-wrap">
             <input

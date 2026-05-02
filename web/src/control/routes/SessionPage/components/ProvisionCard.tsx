@@ -4,8 +4,8 @@ export function ProvisionCard() {
   const items = [
     [
       "do",
-      "DigitalOcean Droplet",
-      "A dedicated droplet in US East 1 (New York) sized 2 vCPU / 4 GB RAM.",
+      "DigitalOcean instance",
+      "A dedicated instance in US East 1 (New York) sized 2 vCPU / 4 GB RAM.",
     ],
     [
       "cf",

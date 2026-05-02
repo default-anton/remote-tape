@@ -20,13 +20,13 @@ const statusDetails: Partial<Record<SessionStatus, Partial<Session>>> = {
     provision_attempts: 1,
   },
   waiting_for_dns: {
-    droplet_id: "123456789",
-    droplet_ip: "203.0.113.10",
+    instance_id: "123456789",
+    public_ip: "203.0.113.10",
     dns_attempts: 1,
   },
   ready: {
-    droplet_id: "123456789",
-    droplet_ip: "203.0.113.10",
+    instance_id: "123456789",
+    public_ip: "203.0.113.10",
     dns_record_id: "dns_ready",
     livekit_url: "wss://room-ready.sessions.localhost/livekit",
     ready_at: "2026-04-25T10:02:00.000000000Z",
@@ -34,8 +34,8 @@ const statusDetails: Partial<Record<SessionStatus, Partial<Session>>> = {
     // TODO: add room redirect target when the production join API exposes it.
   },
   active: {
-    droplet_id: "123456789",
-    droplet_ip: "203.0.113.10",
+    instance_id: "123456789",
+    public_ip: "203.0.113.10",
     dns_record_id: "dns_active",
     livekit_url: "wss://room-active.sessions.localhost/livekit",
     ready_at: "2026-04-25T10:02:00.000000000Z",
@@ -63,7 +63,7 @@ const statusDetails: Partial<Record<SessionStatus, Partial<Session>>> = {
     ended_at: "2026-04-25T10:45:00.000000000Z",
   },
   failed: {
-    last_error: "droplet health check failed",
+    last_error: "instance health check failed",
     last_error_at: "2026-04-25T10:03:00.000000000Z",
     last_error_phase: "health_check",
     health_attempts: 3,
@@ -103,7 +103,7 @@ function mixedScenario(): ControlScenario {
       slug: "joinable",
       title: "The Infra Podcast #312",
       status: "provisioning",
-      droplet_region: "us-east-1",
+      instance_region: "us-east-1",
       room_domain: "theinfra.cast.remote-tape.io",
     },
     {
@@ -111,7 +111,7 @@ function mixedScenario(): ControlScenario {
       slug: "product-builders-live",
       title: "Product Builders Live",
       status: "waiting_for_dns",
-      droplet_region: "us-west-2",
+      instance_region: "us-west-2",
       room_domain: "pblive.cast.remote-tape.io",
     },
     {
@@ -119,7 +119,7 @@ function mixedScenario(): ControlScenario {
       slug: "syntax-fm-recording",
       title: "Syntax.fm – Recording",
       status: "ready",
-      droplet_region: "us-east-1",
+      instance_region: "us-east-1",
       room_domain: "syntax.cast.remote-tape.io",
     },
     {
@@ -127,7 +127,7 @@ function mixedScenario(): ControlScenario {
       slug: "founders-unplugged",
       title: "Founders Unplugged",
       status: "active",
-      droplet_region: "eu-central-1",
+      instance_region: "eu-central-1",
       room_domain: "founders.cast.remote-tape.io",
     },
     {
@@ -135,7 +135,7 @@ function mixedScenario(): ControlScenario {
       slug: "devrel-show",
       title: "The DevRel Show",
       status: "finalizing",
-      droplet_region: "us-west-2",
+      instance_region: "us-west-2",
       room_domain: "devrel.cast.remote-tape.io",
     },
     {
@@ -143,7 +143,7 @@ function mixedScenario(): ControlScenario {
       slug: "ai-and-coffee",
       title: "AI & Coffee",
       status: "awaiting_manual_download",
-      droplet_region: "us-east-1",
+      instance_region: "us-east-1",
       room_domain: "aiandcoffee.cast.remote-tape.io",
     },
     {
@@ -151,7 +151,7 @@ function mixedScenario(): ControlScenario {
       slug: "open-source-today",
       title: "Open Source Today",
       status: "teardown_pending",
-      droplet_region: "eu-west-1",
+      instance_region: "eu-west-1",
       room_domain: "oss.cast.remote-tape.io",
     },
     {
@@ -159,7 +159,7 @@ function mixedScenario(): ControlScenario {
       slug: "latent-space",
       title: "Latent Space",
       status: "ended",
-      droplet_region: "us-west-2",
+      instance_region: "us-west-2",
       room_domain: "latent.cast.remote-tape.io",
     },
     {
@@ -167,7 +167,7 @@ function mixedScenario(): ControlScenario {
       slug: "marketing-trends-podcast",
       title: "Marketing Trends Podcast",
       status: "failed",
-      droplet_region: "ap-southeast-1",
+      instance_region: "ap-southeast-1",
       room_domain: "mktgtrends.cast.remote-tape.io",
     },
     {
@@ -175,7 +175,7 @@ function mixedScenario(): ControlScenario {
       slug: "no-priors",
       title: "No Priors",
       status: "ended",
-      droplet_region: "us-east-1",
+      instance_region: "us-east-1",
       room_domain: "nopriors.cast.remote-tape.io",
     },
   ];
@@ -252,7 +252,7 @@ function provisioningFailedScenario(): ControlScenario {
     title: "The Infra Podcast #312",
     status: "failed",
     provision_attempts: 1,
-    last_error: "DigitalOcean create droplet request failed: rate limited",
+    last_error: "DigitalOcean create instance request failed: rate limited",
     last_error_at: "2026-04-25T10:03:00.000000000Z",
     last_error_phase: "provisioning",
   });

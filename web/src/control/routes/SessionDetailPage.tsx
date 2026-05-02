@@ -41,7 +41,7 @@ export function SessionDetailPage() {
 
 function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSessionResponse }) {
   const session = detail.session;
-  const hasRuntime = Boolean(session.droplet_id || session.droplet_ip);
+  const hasRuntime = Boolean(session.instance_id || session.public_ip);
   const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
   const canForceDestroy = ["provisioning", "waiting_for_dns", "failed"].includes(session.status);
   const [confirmation, setConfirmation] = useState("");
@@ -93,7 +93,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <Info label="Status">
           <StatusBadge status={session.status} />
         </Info>
-        <Info label="Droplet ID">{value(session.droplet_id)}</Info>
+        <Info label="Instance ID">{value(session.instance_id)}</Info>
         <Info label="Session ID">
           {session.id}{" "}
           <span className="copy-mini">
@@ -101,10 +101,10 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           </span>
         </Info>
         <Info label="Region">
-          <Region region={session.droplet_region} />
+          <Region region={session.instance_region} />
         </Info>
-        <Info label="Droplet IP">
-          {value(session.droplet_ip)}{" "}
+        <Info label="Public IP">
+          {value(session.public_ip)}{" "}
           <span className="copy-mini">
             <Icon name="copy" />
           </span>
@@ -177,7 +177,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
                 statusLabel={session.last_heartbeat_at ? "Healthy" : "Provisioned"}
                 rows={[
                   ["Room", session.slug],
-                  ["Region", regionLabel(session.droplet_region)],
+                  ["Region", regionLabel(session.instance_region)],
                   ["Uptime", session.last_heartbeat_at ? "2h 14m 32s" : "—"],
                 ]}
               />
@@ -186,7 +186,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
                 icon="⇩"
                 statusLabel={session.status === "active" ? "Recording" : "Provisioned"}
                 rows={[
-                  ["Endpoint", session.droplet_ip ? `${session.droplet_ip}:7880` : "—"],
+                  ["Endpoint", session.public_ip ? `${session.public_ip}:7880` : "—"],
                   ["Status", session.status === "active" ? "Recording" : "Provisioned"],
                   ["Uptime", session.last_heartbeat_at ? "2h 14m 31s" : "—"],
                 ]}
@@ -207,7 +207,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
                 statusLabel={session.dns_record_id ? "Configured" : "Pending"}
                 rows={[
                   ["Domain", value(session.room_domain)],
-                  ["A record", value(session.droplet_ip)],
+                  ["A record", value(session.public_ip)],
                   ["TTL", session.dns_record_id ? "60s" : "—"],
                 ]}
               />

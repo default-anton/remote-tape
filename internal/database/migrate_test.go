@@ -96,7 +96,7 @@ func TestMigrateCreatesInitialSchema(t *testing.T) {
 	for _, index := range []string{
 		"idx_sessions_status",
 		"idx_sessions_updated_at",
-		"idx_sessions_droplet_id",
+		"idx_sessions_instance_id",
 		"idx_sessions_room_domain",
 		"idx_session_access_tokens_session_id",
 		"idx_session_events_session_id_id",
@@ -233,8 +233,8 @@ insert into sessions(
   title,
   status,
   machine_token_hash,
-  droplet_region,
-  droplet_size,
+  instance_region,
+  instance_size,
   image_id,
   created_at,
   updated_at

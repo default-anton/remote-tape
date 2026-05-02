@@ -23,8 +23,8 @@ func TestCreateSessionPersistsSessionTokensAndEvent(t *testing.T) {
 	created, err := repo.CreateSession(ctx, CreateInput{
 		Title:              "The Infra Podcast #313",
 		Slug:               "the-infra-podcast-313",
-		DropletRegion:      "nyc3",
-		DropletSize:        "s-2vcpu-2gb",
+		InstanceRegion:     "nyc3",
+		InstanceSize:       "s-2vcpu-2gb",
 		ImageID:            "ubuntu-24-04-x64",
 		SessionsBaseDomain: "sessions.example.com",
 	})
@@ -100,7 +100,7 @@ func TestListProvisioningCandidatesReturnsCreatedOrderedAndBounded(t *testing.T)
 		{"sess_provisioning", "Already Provisioning", "already-provisioning", "2026-04-24T11:00:00.000000000Z", "provisioning"},
 	} {
 		if _, err := db.ExecContext(ctx, `
-insert into sessions(id, slug, title, status, droplet_region, droplet_size, image_id, created_at, updated_at)
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
 values (?, ?, ?, ?, 'nyc3', 's-1vcpu-1gb', 'image', ?, ?);
 `, item.id, item.slug, item.title, item.status, item.updatedAt, item.updatedAt); err != nil {
 			t.Fatalf("insert session %q: %v", item.id, err)
@@ -123,7 +123,7 @@ func TestMarkProvisioningStartedTransitionsCreatedAndAppendsEvent(t *testing.T) 
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Start Provisioning", Slug: "start-provisioning", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Start Provisioning", Slug: "start-provisioning", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -161,7 +161,7 @@ func TestMarkProvisioningStartedNoOpsWhenNotCreated(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Started", Slug: "noop-started", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Started", Slug: "noop-started", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -185,7 +185,7 @@ func TestMarkProvisioningFailedTransitionsProvisioningAndCapsError(t *testing.T)
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Fail Provisioning", Slug: "fail-provisioning", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Fail Provisioning", Slug: "fail-provisioning", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestMarkProvisioningFailedNoOpsWhenNotProvisioning(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Failed", Slug: "noop-failed", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Noop Failed", Slug: "noop-failed", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -243,11 +243,11 @@ func TestMarkProvisioningFailedNoOpsWhenNotProvisioning(t *testing.T) {
 	}
 }
 
-func TestAssignDropletTransitionsAndWaitingForIP(t *testing.T) {
+func TestAssignInstanceTransitionsAndWaitingForIP(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Assign Droplet", Slug: "assign-droplet", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Assign Instance", Slug: "assign-instance", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -255,27 +255,27 @@ func TestAssignDropletTransitionsAndWaitingForIP(t *testing.T) {
 		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
 	}
 
-	assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "123", "", false)
+	assignment, err := repo.AssignInstance(ctx, created.Session.ID, "123", "", false)
 	if err != nil || !assignment.Changed || !assignment.Accepted {
-		t.Fatalf("AssignDroplet(no ip) assignment=%+v error=%v", assignment, err)
+		t.Fatalf("AssignInstance(no ip) assignment=%+v error=%v", assignment, err)
 	}
 	detail, err := repo.GetSession(ctx, created.Session.ID)
 	if err != nil {
 		t.Fatalf("GetSession() error = %v", err)
 	}
-	if detail.Session.Status != "provisioning" || detail.Session.DropletID == nil || *detail.Session.DropletID != "123" || detail.Session.DropletIP != nil {
+	if detail.Session.Status != "provisioning" || detail.Session.InstanceID == nil || *detail.Session.InstanceID != "123" || detail.Session.PublicIP != nil {
 		t.Fatalf("session after no-ip assign = %+v", detail.Session)
 	}
 	if detail.Events[len(detail.Events)-1].Type != "provisioning.waiting_for_ip" {
 		t.Fatalf("last event = %+v", detail.Events[len(detail.Events)-1])
 	}
 
-	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "", false)
+	assignment, err = repo.AssignInstance(ctx, created.Session.ID, "123", "", false)
 	if err != nil {
-		t.Fatalf("AssignDroplet(repeated no ip) error = %v", err)
+		t.Fatalf("AssignInstance(repeated no ip) error = %v", err)
 	}
 	if assignment.Changed || !assignment.Accepted {
-		t.Fatalf("AssignDroplet repeated no-ip assignment = %+v", assignment)
+		t.Fatalf("AssignInstance repeated no-ip assignment = %+v", assignment)
 	}
 	detail, err = repo.GetSession(ctx, created.Session.ID)
 	if err != nil {
@@ -285,27 +285,27 @@ func TestAssignDropletTransitionsAndWaitingForIP(t *testing.T) {
 		t.Fatalf("repeated no-ip assignment appended events = %+v", detail.Events)
 	}
 
-	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", true)
+	assignment, err = repo.AssignInstance(ctx, created.Session.ID, "123", "203.0.113.10", true)
 	if err != nil || !assignment.Changed || !assignment.Accepted {
-		t.Fatalf("AssignDroplet(with ip) assignment=%+v error=%v", assignment, err)
+		t.Fatalf("AssignInstance(with ip) assignment=%+v error=%v", assignment, err)
 	}
 	detail, err = repo.GetSession(ctx, created.Session.ID)
 	if err != nil {
 		t.Fatalf("GetSession() error = %v", err)
 	}
-	if detail.Session.Status != "waiting_for_dns" || detail.Session.DropletIP == nil || *detail.Session.DropletIP != "203.0.113.10" {
+	if detail.Session.Status != "waiting_for_dns" || detail.Session.PublicIP == nil || *detail.Session.PublicIP != "203.0.113.10" {
 		t.Fatalf("session after ip assign = %+v", detail.Session)
 	}
-	if detail.Events[len(detail.Events)-1].Type != "provisioning.droplet_adopted" {
+	if detail.Events[len(detail.Events)-1].Type != "provisioning.instance_adopted" {
 		t.Fatalf("last event = %+v", detail.Events[len(detail.Events)-1])
 	}
 
-	assignment, err = repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", true)
+	assignment, err = repo.AssignInstance(ctx, created.Session.ID, "123", "203.0.113.10", true)
 	if err != nil {
-		t.Fatalf("AssignDroplet(noop) error = %v", err)
+		t.Fatalf("AssignInstance(noop) error = %v", err)
 	}
 	if assignment.Changed || assignment.Accepted {
-		t.Fatalf("AssignDroplet outside provisioning assignment = %+v", assignment)
+		t.Fatalf("AssignInstance outside provisioning assignment = %+v", assignment)
 	}
 }
 
@@ -313,15 +313,15 @@ func TestForceDestroyLifecycle(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy", Slug: "force-destroy", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy", Slug: "force-destroy", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
 	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
 		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
 	}
-	if assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "123", "203.0.113.10", false); err != nil || !assignment.Changed {
-		t.Fatalf("AssignDroplet() assignment=%+v error=%v", assignment, err)
+	if assignment, err := repo.AssignInstance(ctx, created.Session.ID, "123", "203.0.113.10", false); err != nil || !assignment.Changed {
+		t.Fatalf("AssignInstance() assignment=%+v error=%v", assignment, err)
 	}
 
 	changed, err := repo.MarkForceDestroyStarted(ctx, created.Session.ID)
@@ -335,8 +335,8 @@ func TestForceDestroyLifecycle(t *testing.T) {
 	if detail.Session.Status != "tearing_down" || detail.Events[len(detail.Events)-1].Type != "session.force_destroy_started" {
 		t.Fatalf("after force destroy start session=%+v events=%+v", detail.Session, detail.Events)
 	}
-	if assignment, err := repo.AssignDroplet(ctx, created.Session.ID, "456", "203.0.113.11", false); err != nil || !assignment.Changed || !assignment.Accepted {
-		t.Fatalf("AssignDroplet while tearing_down assignment=%+v error=%v", assignment, err)
+	if assignment, err := repo.AssignInstance(ctx, created.Session.ID, "456", "203.0.113.11", false); err != nil || !assignment.Changed || !assignment.Accepted {
+		t.Fatalf("AssignInstance while tearing_down assignment=%+v error=%v", assignment, err)
 	}
 	if changed, err := repo.MarkForceDestroyed(ctx, created.Session.ID, "456"); err != nil || !changed {
 		t.Fatalf("MarkForceDestroyed() changed=%v error=%v", changed, err)
@@ -354,7 +354,7 @@ func TestForceDestroyFailureReturnsToFailedForRetry(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy Failure", Slug: "force-destroy-failure", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Force Destroy Failure", Slug: "force-destroy-failure", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -383,7 +383,7 @@ func TestIssueMachineTokenStoresHashAndEvent(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Needs Machine Token", Slug: "needs-machine-token", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Needs Machine Token", Slug: "needs-machine-token", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -417,11 +417,11 @@ func TestIssueMachineTokenStoresHashAndEvent(t *testing.T) {
 	}
 }
 
-func TestIssueMachineTokenRotatesBeforeDropletAssignment(t *testing.T) {
+func TestIssueMachineTokenRotatesBeforeInstanceAssignment(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Rotate Machine Token", Slug: "rotate-machine-token", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Rotate Machine Token", Slug: "rotate-machine-token", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -454,16 +454,16 @@ func TestIssueMachineTokenRotatesBeforeDropletAssignment(t *testing.T) {
 	}
 }
 
-func TestIssueMachineTokenRejectsAfterDropletAssignment(t *testing.T) {
+func TestIssueMachineTokenRejectsAfterInstanceAssignment(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Locked Machine Token", Slug: "locked-machine-token", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Locked Machine Token", Slug: "locked-machine-token", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `update sessions set droplet_id = 'do-123' where id = ?`, created.Session.ID); err != nil {
-		t.Fatalf("set droplet id: %v", err)
+	if _, err := db.ExecContext(ctx, `update sessions set instance_id = 'do-123' where id = ?`, created.Session.ID); err != nil {
+		t.Fatalf("set instance id: %v", err)
 	}
 
 	_, err = repo.IssueMachineToken(ctx, created.Session.ID)
@@ -478,7 +478,7 @@ func TestCreateSessionUsesDNSSafeRoomDomainForMaxLengthSlug(t *testing.T) {
 	repo := NewRepository(db)
 	slug := strings.Repeat("a", 63)
 
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Max Slug", Slug: slug, DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Max Slug", Slug: slug, InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -493,7 +493,7 @@ func TestCreateSessionRejectsInvalidSessionsBaseDomain(t *testing.T) {
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
 
-	_, err := repo.CreateSession(ctx, CreateInput{Title: "Bad Base Domain", Slug: "bad-base-domain", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: strings.Repeat("a", 64) + ".example.com"})
+	_, err := repo.CreateSession(ctx, CreateInput{Title: "Bad Base Domain", Slug: "bad-base-domain", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: strings.Repeat("a", 64) + ".example.com"})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("CreateSession() error = %v, want ErrInvalidInput", err)
 	}
@@ -503,7 +503,7 @@ func TestCreateSessionRejectsDuplicateSlug(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	input := CreateInput{Title: "One", Slug: "same-slug", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"}
+	input := CreateInput{Title: "One", Slug: "same-slug", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"}
 	if _, err := repo.CreateSession(ctx, input); err != nil {
 		t.Fatalf("first CreateSession() error = %v", err)
 	}
@@ -518,7 +518,7 @@ func TestJoinSessionValidatesHashedTokenAndRecordsUse(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
-	created, err := repo.CreateSession(ctx, CreateInput{Title: "Join Me", Slug: "join-me", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "image"})
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "Join Me", Slug: "join-me", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}

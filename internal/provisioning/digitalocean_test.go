@@ -12,7 +12,7 @@ import (
 	"github.com/digitalocean/godo"
 )
 
-func TestDigitalOceanEnsureDropletCreatesWhenMissing(t *testing.T) {
+func TestDigitalOceanEnsureInstanceCreatesWhenMissing(t *testing.T) {
 	var created bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -39,16 +39,16 @@ func TestDigitalOceanEnsureDropletCreatesWhenMissing(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := testDOProvisioner(server).EnsureDroplet(context.Background(), testSession())
+	result, err := testDOProvider(server).EnsureInstance(context.Background(), testSession())
 	if err != nil {
-		t.Fatalf("EnsureDroplet() error = %v", err)
+		t.Fatalf("EnsureInstance() error = %v", err)
 	}
 	if !created || result.ID != "42" || result.IP != "203.0.113.42" || result.Adopted {
 		t.Fatalf("result = %#v created=%v", result, created)
 	}
 }
 
-func TestDigitalOceanEnsureDropletAdoptsAndRepairsTags(t *testing.T) {
+func TestDigitalOceanEnsureInstanceAdoptsAndRepairsTags(t *testing.T) {
 	var repaired bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -65,16 +65,16 @@ func TestDigitalOceanEnsureDropletAdoptsAndRepairsTags(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := testDOProvisioner(server).EnsureDroplet(context.Background(), testSession())
+	result, err := testDOProvider(server).EnsureInstance(context.Background(), testSession())
 	if err != nil {
-		t.Fatalf("EnsureDroplet() error = %v", err)
+		t.Fatalf("EnsureInstance() error = %v", err)
 	}
 	if !result.Adopted || result.ID != "99" || result.IP != "203.0.113.99" || !repaired {
 		t.Fatalf("result = %#v repaired=%v", result, repaired)
 	}
 }
 
-func TestDigitalOceanEnsureDropletPrefersPersistedDropletID(t *testing.T) {
+func TestDigitalOceanEnsureInstancePrefersPersistedInstanceID(t *testing.T) {
 	var listed, created, repaired bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -99,17 +99,17 @@ func TestDigitalOceanEnsureDropletPrefersPersistedDropletID(t *testing.T) {
 
 	s := testSession()
 	dropletID := "123"
-	s.DropletID = &dropletID
-	result, err := testDOProvisioner(server).EnsureDroplet(context.Background(), s)
+	s.InstanceID = &dropletID
+	result, err := testDOProvider(server).EnsureInstance(context.Background(), s)
 	if err != nil {
-		t.Fatalf("EnsureDroplet() error = %v", err)
+		t.Fatalf("EnsureInstance() error = %v", err)
 	}
 	if !result.Adopted || result.ID != "123" || result.IP != "203.0.113.123" || !repaired || listed || created {
 		t.Fatalf("result = %#v repaired=%v listed=%v created=%v", result, repaired, listed, created)
 	}
 }
 
-func TestDigitalOceanEnsureDropletFallsBackToTagWhenPersistedDropletIsMissing(t *testing.T) {
+func TestDigitalOceanEnsureInstanceFallsBackToTagWhenPersistedDropletIsMissing(t *testing.T) {
 	var created bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -130,10 +130,10 @@ func TestDigitalOceanEnsureDropletFallsBackToTagWhenPersistedDropletIsMissing(t 
 
 	s := testSession()
 	dropletID := "123"
-	s.DropletID = &dropletID
-	result, err := testDOProvisioner(server).EnsureDroplet(context.Background(), s)
+	s.InstanceID = &dropletID
+	result, err := testDOProvider(server).EnsureInstance(context.Background(), s)
 	if err != nil {
-		t.Fatalf("EnsureDroplet() error = %v", err)
+		t.Fatalf("EnsureInstance() error = %v", err)
 	}
 	if !result.Adopted || result.ID != "456" || result.IP != "203.0.113.45" || created {
 		t.Fatalf("result = %#v created=%v", result, created)
@@ -158,16 +158,16 @@ func TestDigitalOceanForceDestroyFallsBackToTaggedDropletsWhenPersistedIDIsMissi
 	defer server.Close()
 
 	dropletID := "123"
-	result, err := testDOProvisioner(server).ForceDestroySessionServer(context.Background(), session.Session{ID: "sess_1", DropletID: &dropletID})
+	result, err := testDOProvider(server).ForceDestroySessionServer(context.Background(), session.Session{ID: "sess_1", InstanceID: &dropletID})
 	if err != nil {
 		t.Fatalf("ForceDestroySessionServer() error = %v", err)
 	}
-	if result.DropletID != "456" || !deleted["456"] {
+	if result.InstanceID != "456" || !deleted["456"] {
 		t.Fatalf("result = %#v deleted=%v", result, deleted)
 	}
 }
 
-func TestDigitalOceanEnsureDropletReturnsNoIPForRetry(t *testing.T) {
+func TestDigitalOceanEnsureInstanceReturnsNoIPForRetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v2/tags":
@@ -182,28 +182,28 @@ func TestDigitalOceanEnsureDropletReturnsNoIPForRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := testDOProvisioner(server).EnsureDroplet(context.Background(), testSession())
+	result, err := testDOProvider(server).EnsureInstance(context.Background(), testSession())
 	if err != nil {
-		t.Fatalf("EnsureDroplet() error = %v", err)
+		t.Fatalf("EnsureInstance() error = %v", err)
 	}
 	if result.ID != "77" || result.IP != "" {
 		t.Fatalf("result = %#v", result)
 	}
 }
 
-func testDOProvisioner(server *httptest.Server) *DigitalOceanProvisioner {
+func testDOProvider(server *httptest.Server) *DigitalOceanInstanceProvider {
 	client, err := godo.New(nil, godo.SetBaseURL(server.URL+"/"))
 	if err != nil {
 		panic(err)
 	}
-	return &DigitalOceanProvisioner{
+	return &DigitalOceanInstanceProvider{
 		client:  client,
 		sshKeys: []godo.DropletCreateSSHKey{{ID: 12345}},
 	}
 }
 
 func testSession() session.Session {
-	return session.Session{ID: "sess_1", Slug: "demo", DropletRegion: "nyc3", DropletSize: "s-1vcpu-1gb", ImageID: "ubuntu-24-04-x64"}
+	return session.Session{ID: "sess_1", Slug: "demo", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "ubuntu-24-04-x64"}
 }
 
 func dropletPayload(id int, tags []string, ip string) map[string]any {

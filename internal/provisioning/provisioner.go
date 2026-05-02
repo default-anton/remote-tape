@@ -6,14 +6,14 @@ import (
 	"github.com/default-anton/remote-tape/internal/session"
 )
 
-type DropletResult struct {
+type InstanceResult struct {
 	ID      string
 	IP      string
 	Adopted bool
 }
 
-type Provisioner interface {
-	EnsureDroplet(ctx context.Context, s session.Session) (DropletResult, error)
+type InstanceProvider interface {
+	EnsureInstance(ctx context.Context, s session.Session) (InstanceResult, error)
 }
 
 type Destroyer interface {
@@ -21,5 +21,5 @@ type Destroyer interface {
 }
 
 type DestroyResult struct {
-	DropletID string
+	InstanceID string
 }

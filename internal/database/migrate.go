@@ -52,10 +52,10 @@ create table sessions (
 
   machine_token_hash text,
 
-  droplet_id text,
-  droplet_ip text,
-  droplet_region text not null,
-  droplet_size text not null,
+  instance_id text,
+  public_ip text,
+  instance_region text not null,
+  instance_size text not null,
   image_id text not null,
 
   room_domain text unique,
@@ -113,7 +113,7 @@ create table session_events (
 
 create index idx_sessions_status on sessions(status);
 create index idx_sessions_updated_at on sessions(updated_at);
-create index idx_sessions_droplet_id on sessions(droplet_id);
+create index idx_sessions_instance_id on sessions(instance_id);
 create index idx_sessions_room_domain on sessions(room_domain);
 
 create index idx_session_access_tokens_session_id

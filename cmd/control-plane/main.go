@@ -69,7 +69,7 @@ func run(ctx context.Context) int {
 	)
 
 	sessionRepo := session.NewRepository(db)
-	provisioner, err := provisioning.NewDigitalOceanProvisioner(provisioning.DigitalOceanConfig{
+	provisioner, err := provisioning.NewDigitalOceanInstanceProvider(provisioning.DigitalOceanConfig{
 		APIToken: string(cfg.Security.DigitalOceanAPIToken),
 		SSHKeys:  cfg.Provisioning.DigitalOceanSSHKeys,
 	})
@@ -87,12 +87,12 @@ func run(ctx context.Context) int {
 
 	httpServer := &http.Server{
 		Handler: server.New(db, logger, server.Options{
-			ControlPlaneURL:    cfg.General.ControlPlaneURL,
-			SessionsBaseDomain: cfg.General.SessionsBaseDomain,
-			DefaultRegion:      cfg.Provisioning.DefaultRegion,
-			DefaultDropletSize: cfg.Provisioning.DefaultDropletSize,
-			ImageID:            cfg.Provisioning.ImageID,
-			Auth:               authManager,
+			ControlPlaneURL:     cfg.General.ControlPlaneURL,
+			SessionsBaseDomain:  cfg.General.SessionsBaseDomain,
+			DefaultRegion:       cfg.Provisioning.DefaultRegion,
+			DefaultInstanceSize: cfg.Provisioning.DefaultInstanceSize,
+			ImageID:             cfg.Provisioning.ImageID,
+			Auth:                authManager,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

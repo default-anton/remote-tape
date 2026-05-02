@@ -8,7 +8,7 @@ import (
 
 const sessionColumns = `
 id, slug, title, status,
-droplet_id, droplet_ip, droplet_region, droplet_size, image_id,
+instance_id, public_ip, instance_region, instance_size, image_id,
 room_domain, dns_record_id, livekit_url,
 recording_download_url, finalization_summary_json,
 created_at, updated_at, ready_at, active_at, finalization_started_at, finalized_at,
@@ -30,7 +30,7 @@ func prefixedSessionColumns(prefix string) string {
 
 func scanSession(row rowScanner) (Session, error) {
 	var s Session
-	var dropletID, dropletIP, roomDomain, dnsRecordID, liveKitURL sql.NullString
+	var instanceID, publicIP, roomDomain, dnsRecordID, liveKitURL sql.NullString
 	var recordingDownloadURL, finalizationSummaryJSON sql.NullString
 	var readyAt, activeAt, finalizationStartedAt, finalizedAt, lastHeartbeatAt sql.NullString
 	var downloadConfirmedAt, downloadConfirmedBy, endedAt, expiresAt sql.NullString
@@ -40,10 +40,10 @@ func scanSession(row rowScanner) (Session, error) {
 		&s.Slug,
 		&s.Title,
 		&s.Status,
-		&dropletID,
-		&dropletIP,
-		&s.DropletRegion,
-		&s.DropletSize,
+		&instanceID,
+		&publicIP,
+		&s.InstanceRegion,
+		&s.InstanceSize,
 		&s.ImageID,
 		&roomDomain,
 		&dnsRecordID,
@@ -71,8 +71,8 @@ func scanSession(row rowScanner) (Session, error) {
 	); err != nil {
 		return Session{}, fmt.Errorf("scan session: %w", err)
 	}
-	s.DropletID = nullStringPtr(dropletID)
-	s.DropletIP = nullStringPtr(dropletIP)
+	s.InstanceID = nullStringPtr(instanceID)
+	s.PublicIP = nullStringPtr(publicIP)
 	s.RoomDomain = nullStringPtr(roomDomain)
 	s.DNSRecordID = nullStringPtr(dnsRecordID)
 	s.LiveKitURL = nullStringPtr(liveKitURL)
@@ -119,7 +119,7 @@ func scanEvent(row rowScanner) (Event, error) {
 func scanSessionAndToken(row rowScanner) (Session, AccessToken, error) {
 	var s Session
 	var t AccessToken
-	var dropletID, dropletIP, roomDomain, dnsRecordID, liveKitURL sql.NullString
+	var instanceID, publicIP, roomDomain, dnsRecordID, liveKitURL sql.NullString
 	var recordingDownloadURL, finalizationSummaryJSON sql.NullString
 	var readyAt, activeAt, finalizationStartedAt, finalizedAt, lastHeartbeatAt sql.NullString
 	var downloadConfirmedAt, downloadConfirmedBy, endedAt, expiresAt sql.NullString
@@ -130,10 +130,10 @@ func scanSessionAndToken(row rowScanner) (Session, AccessToken, error) {
 		&s.Slug,
 		&s.Title,
 		&s.Status,
-		&dropletID,
-		&dropletIP,
-		&s.DropletRegion,
-		&s.DropletSize,
+		&instanceID,
+		&publicIP,
+		&s.InstanceRegion,
+		&s.InstanceSize,
 		&s.ImageID,
 		&roomDomain,
 		&dnsRecordID,
@@ -168,8 +168,8 @@ func scanSessionAndToken(row rowScanner) (Session, AccessToken, error) {
 	); err != nil {
 		return Session{}, AccessToken{}, fmt.Errorf("scan join session: %w", err)
 	}
-	s.DropletID = nullStringPtr(dropletID)
-	s.DropletIP = nullStringPtr(dropletIP)
+	s.InstanceID = nullStringPtr(instanceID)
+	s.PublicIP = nullStringPtr(publicIP)
 	s.RoomDomain = nullStringPtr(roomDomain)
 	s.DNSRecordID = nullStringPtr(dnsRecordID)
 	s.LiveKitURL = nullStringPtr(liveKitURL)

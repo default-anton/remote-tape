@@ -50,7 +50,7 @@ export function SessionTable({ sessions }: { sessions: Session[] }) {
                 <StatusBadge status={session.status} />
               </td>
               <td>
-                <Region region={session.droplet_region} />
+                <Region region={session.instance_region} />
               </td>
               <td>{domainFor(session)}</td>
               <td>{formatDateTime(session.created_at)}</td>

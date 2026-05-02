@@ -34,14 +34,14 @@ type provisioningStore interface {
 	ListProvisioningSessions(ctx context.Context, limit int) ([]session.Session, error)
 	ListTearingDownSessions(ctx context.Context, limit int) ([]session.Session, error)
 	MarkProvisioningStarted(ctx context.Context, sessionID string) (bool, error)
-	AssignDroplet(ctx context.Context, sessionID string, dropletID string, dropletIP string, adopted bool) (session.DropletAssignmentResult, error)
+	AssignInstance(ctx context.Context, sessionID string, instanceID string, publicIP string, adopted bool) (session.InstanceAssignmentResult, error)
 	MarkProvisioningFailed(ctx context.Context, sessionID string, cause error) (bool, error)
-	MarkForceDestroyed(ctx context.Context, sessionID string, dropletID string) (bool, error)
+	MarkForceDestroyed(ctx context.Context, sessionID string, instanceID string) (bool, error)
 	MarkForceDestroyFailed(ctx context.Context, sessionID string, cause error) (bool, error)
 }
 
 type sessionServerManager interface {
-	provisioning.Provisioner
+	provisioning.InstanceProvider
 	provisioning.Destroyer
 }
 
@@ -102,7 +102,7 @@ func (r *Reconciler) Step(ctx context.Context) error {
 		return errors.Join(errors.Join(errs...), err)
 	}
 	for _, s := range provisioningSessions {
-		result, err := r.provisioner.EnsureDroplet(ctx, s)
+		result, err := r.provisioner.EnsureInstance(ctx, s)
 		if err != nil {
 			r.logger.ErrorContext(ctx, "session server provisioning failed", "session_id", s.ID, "error", err)
 			if _, markErr := r.repo.MarkProvisioningFailed(ctx, s.ID, err); markErr != nil {
@@ -110,20 +110,20 @@ func (r *Reconciler) Step(ctx context.Context) error {
 			}
 			continue
 		}
-		assignment, err := r.repo.AssignDroplet(ctx, s.ID, result.ID, result.IP, result.Adopted)
+		assignment, err := r.repo.AssignInstance(ctx, s.ID, result.ID, result.IP, result.Adopted)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("assign droplet for session %s: %w", s.ID, err))
+			errs = append(errs, fmt.Errorf("assign instance for session %s: %w", s.ID, err))
 			continue
 		}
 		if !assignment.Accepted {
-			r.logger.WarnContext(ctx, "session server assignment rejected; destroying untracked droplet", "session_id", s.ID, "droplet_id", result.ID, "status", assignment.Status)
-			if _, destroyErr := r.provisioner.ForceDestroySessionServer(ctx, session.Session{ID: s.ID, DropletID: &result.ID}); destroyErr != nil {
-				errs = append(errs, fmt.Errorf("destroy rejected droplet for session %s: %w", s.ID, destroyErr))
+			r.logger.WarnContext(ctx, "session server assignment rejected; destroying untracked instance", "session_id", s.ID, "instance_id", result.ID, "status", assignment.Status)
+			if _, destroyErr := r.provisioner.ForceDestroySessionServer(ctx, session.Session{ID: s.ID, InstanceID: &result.ID}); destroyErr != nil {
+				errs = append(errs, fmt.Errorf("destroy rejected instance for session %s: %w", s.ID, destroyErr))
 			}
 			continue
 		}
 		if assignment.Changed {
-			r.logger.InfoContext(ctx, "session server assigned", "session_id", s.ID, "droplet_id", result.ID, "droplet_ip", result.IP, "adopted", result.Adopted, "status", assignment.Status)
+			r.logger.InfoContext(ctx, "session server assigned", "session_id", s.ID, "instance_id", result.ID, "public_ip", result.IP, "adopted", result.Adopted, "status", assignment.Status)
 		}
 	}
 
@@ -140,13 +140,13 @@ func (r *Reconciler) Step(ctx context.Context) error {
 			}
 			continue
 		}
-		changed, err := r.repo.MarkForceDestroyed(ctx, s.ID, result.DropletID)
+		changed, err := r.repo.MarkForceDestroyed(ctx, s.ID, result.InstanceID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mark force destroyed for session %s: %w", s.ID, err))
 			continue
 		}
 		if changed {
-			r.logger.InfoContext(ctx, "session server force destroyed", "session_id", s.ID, "droplet_id", result.DropletID)
+			r.logger.InfoContext(ctx, "session server force destroyed", "session_id", s.ID, "instance_id", result.InstanceID)
 		}
 	}
 	return errors.Join(errs...)

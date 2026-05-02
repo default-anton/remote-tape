@@ -14,11 +14,11 @@ import (
 )
 
 type createSessionRequest struct {
-	Title         string `json:"title"`
-	Slug          string `json:"slug"`
-	DropletRegion string `json:"droplet_region"`
-	DropletSize   string `json:"droplet_size"`
-	ImageID       string `json:"image_id"`
+	Title          string `json:"title"`
+	Slug           string `json:"slug"`
+	InstanceRegion string `json:"instance_region"`
+	InstanceSize   string `json:"instance_size"`
+	ImageID        string `json:"image_id"`
 }
 
 type createSessionResponse struct {
@@ -202,13 +202,13 @@ func joinResponse(result session.JoinResult) joinSessionResponse {
 }
 
 func (s *Server) createSession(r *http.Request, req createSessionRequest) (session.CreateResult, error) {
-	region := strings.TrimSpace(req.DropletRegion)
+	region := strings.TrimSpace(req.InstanceRegion)
 	if region == "" {
 		region = s.options.DefaultRegion
 	}
-	size := strings.TrimSpace(req.DropletSize)
+	size := strings.TrimSpace(req.InstanceSize)
 	if size == "" {
-		size = s.options.DefaultDropletSize
+		size = s.options.DefaultInstanceSize
 	}
 	imageID := strings.TrimSpace(req.ImageID)
 	if imageID == "" {
@@ -217,8 +217,8 @@ func (s *Server) createSession(r *http.Request, req createSessionRequest) (sessi
 	return s.repo.CreateSession(r.Context(), session.CreateInput{
 		Title:              req.Title,
 		Slug:               req.Slug,
-		DropletRegion:      region,
-		DropletSize:        size,
+		InstanceRegion:     region,
+		InstanceSize:       size,
 		ImageID:            imageID,
 		SessionsBaseDomain: s.options.SessionsBaseDomain,
 	})

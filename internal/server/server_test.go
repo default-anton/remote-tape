@@ -188,7 +188,7 @@ func TestForceDestroySessionServerRequiresAuthCSRFAndConfirmation(t *testing.T) 
 	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	if _, err := db.ExecContext(context.Background(), `update sessions set status = 'waiting_for_dns', droplet_id = '123' where id = ?;`, created.Session.ID); err != nil {
+	if _, err := db.ExecContext(context.Background(), `update sessions set status = 'waiting_for_dns', instance_id = '123' where id = ?;`, created.Session.ID); err != nil {
 		t.Fatalf("seed waiting_for_dns: %v", err)
 	}
 
@@ -255,7 +255,7 @@ func TestJoinAPIValidatesToken(t *testing.T) {
 
 	if _, err := db.ExecContext(context.Background(), `
 update sessions
-set droplet_id = 'do-123', droplet_ip = '203.0.113.10', dns_record_id = 'cf-123', livekit_url = 'wss://livekit.example.com', recording_download_url = 'https://recordings.example.com/session.zip', finalization_summary_json = '{"files":1}', last_error = 'operator diagnostics only'
+set instance_id = 'do-123', public_ip = '203.0.113.10', dns_record_id = 'cf-123', livekit_url = 'wss://livekit.example.com', recording_download_url = 'https://recordings.example.com/session.zip', finalization_summary_json = '{"files":1}', last_error = 'operator diagnostics only'
 where id = ?;
 `, created.Session.ID); err != nil {
 		t.Fatalf("seed admin-only session fields: %v", err)
@@ -270,7 +270,7 @@ where id = ?;
 	if !strings.Contains(joinBody, `"role":"guest"`) || strings.Contains(joinBody, created.Tokens["guest"].Token) {
 		t.Fatalf("join response invalid or leaked raw token: %s", joinBody)
 	}
-	for _, forbidden := range []string{"image_id", "droplet_id", "droplet_ip", "dns_record_id", "livekit_url", "recording_download_url", "finalization_summary_json", "last_error", "access_tokens", "session_id"} {
+	for _, forbidden := range []string{"image_id", "instance_id", "public_ip", "dns_record_id", "livekit_url", "recording_download_url", "finalization_summary_json", "last_error", "access_tokens", "session_id"} {
 		if strings.Contains(joinBody, forbidden) {
 			t.Fatalf("join response leaked %q: %s", forbidden, joinBody)
 		}

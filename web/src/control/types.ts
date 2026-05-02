@@ -8,10 +8,10 @@ export const SessionSchema = z.object({
   slug: z.string(),
   title: z.string(),
   status: SessionStatusSchema,
-  droplet_id: nullableString,
-  droplet_ip: nullableString,
-  droplet_region: z.string(),
-  droplet_size: z.string(),
+  instance_id: nullableString,
+  public_ip: nullableString,
+  instance_region: z.string(),
+  instance_size: z.string(),
   image_id: z.string(),
   room_domain: nullableString,
   dns_record_id: nullableString,
@@ -118,6 +118,6 @@ export type JoinResponse = z.infer<typeof JoinResponseSchema>;
 export type CreateSessionInput = {
   title: string;
   slug?: string;
-  droplet_region?: string;
-  droplet_size?: string;
+  instance_region?: string;
+  instance_size?: string;
 };

@@ -17,13 +17,13 @@ import (
 )
 
 type Options struct {
-	ControlPlaneURL    string
-	SessionsBaseDomain string
-	DefaultRegion      string
-	DefaultDropletSize string
-	ImageID            string
-	Auth               *auth.Manager
-	controlUIFS        fs.FS
+	ControlPlaneURL     string
+	SessionsBaseDomain  string
+	DefaultRegion       string
+	DefaultInstanceSize string
+	ImageID             string
+	Auth                *auth.Manager
+	controlUIFS         fs.FS
 }
 
 type Server struct {
@@ -70,11 +70,11 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 
 func defaultOptions() Options {
 	return Options{
-		ControlPlaneURL:    "http://127.0.0.1:8080",
-		SessionsBaseDomain: "sessions.localhost",
-		DefaultRegion:      "nyc3",
-		DefaultDropletSize: "s-2vcpu-2gb",
-		ImageID:            "ubuntu-24-04-x64",
+		ControlPlaneURL:     "http://127.0.0.1:8080",
+		SessionsBaseDomain:  "sessions.localhost",
+		DefaultRegion:       "nyc3",
+		DefaultInstanceSize: "s-2vcpu-2gb",
+		ImageID:             "ubuntu-24-04-x64",
 	}
 }
 
@@ -88,8 +88,8 @@ func mergeOptions(base Options, override Options) Options {
 	if override.DefaultRegion != "" {
 		base.DefaultRegion = override.DefaultRegion
 	}
-	if override.DefaultDropletSize != "" {
-		base.DefaultDropletSize = override.DefaultDropletSize
+	if override.DefaultInstanceSize != "" {
+		base.DefaultInstanceSize = override.DefaultInstanceSize
 	}
 	if override.ImageID != "" {
 		base.ImageID = override.ImageID

@@ -18,7 +18,7 @@ export function Field({
         ? "slug"
         : label === "Preferred region"
           ? "region"
-          : label === "Droplet size"
+          : label === "Instance size"
             ? "size"
             : undefined;
   return (

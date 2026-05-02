@@ -64,10 +64,10 @@ Create session -> reconciler advances it to provisioning -> timeline shows the p
 
 ### Slice 5: real DigitalOcean provisioner — implemented
 
-- create droplet
-- tag droplet
-- adopt existing droplet by tag
-- persist droplet ID/IP
+- create instance
+- tag instance
+- adopt existing instance by tag
+- persist instance ID/IP
 - retry safely after partial failure
 - emit lifecycle events for create/adopt/failure
 - force destroy session server escape hatch for early lifecycle states
@@ -75,7 +75,7 @@ Create session -> reconciler advances it to provisioning -> timeline shows the p
 Demo:
 
 ```txt
-Create session -> real droplet appears -> session status updates -> timeline shows each step
+Create session -> real instance appears -> session status updates -> timeline shows each step
 ```
 
 ## Current slice
@@ -91,23 +91,23 @@ Create session -> real droplet appears -> session status updates -> timeline sho
 Demo:
 
 ```txt
-Create session -> room domain resolves to droplet IP -> timeline shows DNS creation
+Create session -> room domain resolves to instance IP -> timeline shows DNS creation
 ```
 
-### Slice 7: session-droplet callback contract
+### Slice 7: session-server callback contract
 
 - generate per-session machine token
 - store only `sessions.machine_token_hash`
-- inject plaintext machine token into cloud-init for the session droplet only
+- inject plaintext machine token into cloud-init for the session instance only
 - authenticate internal callbacks
 - implement ready, active, finalized, and heartbeat endpoints
 - update `active_at`, `last_heartbeat_at`, `finalized_at`, `recording_download_url`, and `finalization_summary_json` from authenticated callbacks
-- mark ready only after authenticated ready callback and healthy session droplet
+- mark ready only after authenticated ready callback and healthy session instance
 
 Demo:
 
 ```txt
-Droplet boots -> calls authenticated ready callback -> control plane marks session ready
+Instance boots -> calls authenticated ready callback -> control plane marks session ready
 ```
 
 ### Slice 8: join redirect flow
@@ -129,7 +129,7 @@ Click join link -> wait while provisioning -> redirect when ready -> failed/ende
 
 - host ends session
 - status moves to `finalizing`
-- session droplet finalizes recordings/manifests
+- session instance finalizes recordings/manifests
 - authenticated finalized callback stores `finalized_at`, `recording_download_url`, and `finalization_summary_json`, then moves session to `awaiting_manual_download`
 - dashboard shows download instructions/links; align with [`docs/ui-reference/admin-session-detail-awaiting-manual-download.png`](docs/ui-reference/admin-session-detail-awaiting-manual-download.png)
 - host/admin confirms download
@@ -141,12 +141,12 @@ Demo:
 End session -> finalized callback arrives -> dashboard waits for manual download confirmation -> confirm download queues teardown
 ```
 
-Finalization is not permission to destroy the droplet. Only explicit download confirmation may move the session to teardown.
+Finalization is not permission to destroy the instance. Only explicit download confirmation may move the session to teardown.
 
 ### Slice 10: safe teardown
 
 - reconciler deletes DNS for `teardown_pending` sessions
-- reconciler destroys the droplet only after DNS teardown is safe
+- reconciler destroys the instance only after DNS teardown is safe
 - retries are idempotent
 - terminal status becomes `ended`
 - timeline shows every teardown step
@@ -154,7 +154,7 @@ Finalization is not permission to destroy the droplet. Only explicit download co
 Demo:
 
 ```txt
-Confirm download -> DNS deleted -> droplet destroyed -> session marked ended -> timeline proves each step
+Confirm download -> DNS deleted -> instance destroyed -> session marked ended -> timeline proves each step
 ```
 
 ## Required initial test coverage

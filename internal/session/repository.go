@@ -21,7 +21,7 @@ var (
 	ErrInvalidInput       = errors.New("invalid session input")
 	ErrSlugConflicts      = errors.New("session slug already exists")
 	ErrInvalidToken       = errors.New("invalid session access token")
-	ErrMachineTokenLocked = errors.New("machine token is locked after droplet assignment")
+	ErrMachineTokenLocked = errors.New("machine token is locked after instance assignment")
 )
 
 type Repository struct {
@@ -32,8 +32,8 @@ type Repository struct {
 type CreateInput struct {
 	Title              string
 	Slug               string
-	DropletRegion      string
-	DropletSize        string
+	InstanceRegion     string
+	InstanceSize       string
 	ImageID            string
 	SessionsBaseDomain string
 }
@@ -58,10 +58,10 @@ type Session struct {
 	Slug                    string  `json:"slug"`
 	Title                   string  `json:"title"`
 	Status                  string  `json:"status"`
-	DropletID               *string `json:"droplet_id"`
-	DropletIP               *string `json:"droplet_ip"`
-	DropletRegion           string  `json:"droplet_region"`
-	DropletSize             string  `json:"droplet_size"`
+	InstanceID              *string `json:"instance_id"`
+	PublicIP                *string `json:"public_ip"`
+	InstanceRegion          string  `json:"instance_region"`
+	InstanceSize            string  `json:"instance_size"`
 	ImageID                 string  `json:"image_id"`
 	RoomDomain              *string `json:"room_domain"`
 	DNSRecordID             *string `json:"dns_record_id"`
@@ -125,8 +125,8 @@ func NewRepository(db *sql.DB) *Repository {
 func (r *Repository) CreateSession(ctx context.Context, input CreateInput) (CreateResult, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Slug = normalizeSlugInput(input.Slug)
-	input.DropletRegion = strings.TrimSpace(input.DropletRegion)
-	input.DropletSize = strings.TrimSpace(input.DropletSize)
+	input.InstanceRegion = strings.TrimSpace(input.InstanceRegion)
+	input.InstanceSize = strings.TrimSpace(input.InstanceSize)
 	input.ImageID = strings.TrimSpace(input.ImageID)
 	input.SessionsBaseDomain = strings.ToLower(strings.Trim(strings.TrimSpace(input.SessionsBaseDomain), "."))
 
@@ -142,8 +142,8 @@ func (r *Repository) CreateSession(ctx context.Context, input CreateInput) (Crea
 	if err := validateSlug(input.Slug); err != nil {
 		return CreateResult{}, err
 	}
-	if input.DropletRegion == "" || input.DropletSize == "" || input.ImageID == "" {
-		return CreateResult{}, fmt.Errorf("%w: droplet region, droplet size, and image id are required", ErrInvalidInput)
+	if input.InstanceRegion == "" || input.InstanceSize == "" || input.ImageID == "" {
+		return CreateResult{}, fmt.Errorf("%w: instance region, instance size, and image id are required", ErrInvalidInput)
 	}
 
 	if exists, err := r.slugExists(ctx, input.Slug); err != nil {
@@ -188,10 +188,10 @@ func (r *Repository) CreateSession(ctx context.Context, input CreateInput) (Crea
 	if _, err := tx.ExecContext(ctx, `
 insert into sessions(
   id, slug, title, status, machine_token_hash,
-  droplet_region, droplet_size, image_id, room_domain,
+  instance_region, instance_size, image_id, room_domain,
   created_at, updated_at
 ) values (?, ?, ?, 'created', ?, ?, ?, ?, ?, ?, ?);
-`, sessionID, input.Slug, input.Title, nil, input.DropletRegion, input.DropletSize, input.ImageID, roomDomain, createdAt, createdAt); err != nil {
+`, sessionID, input.Slug, input.Title, nil, input.InstanceRegion, input.InstanceSize, input.ImageID, roomDomain, createdAt, createdAt); err != nil {
 		if strings.Contains(err.Error(), "constraint failed") {
 			return CreateResult{}, ErrSlugConflicts
 		}
@@ -299,114 +299,114 @@ where id = ? and status = 'created';
 	})
 }
 
-type DropletAssignmentResult struct {
+type InstanceAssignmentResult struct {
 	Accepted bool
 	Changed  bool
 	Status   string
 }
 
-func (r *Repository) AssignDroplet(ctx context.Context, sessionID string, dropletID string, dropletIP string, adopted bool) (DropletAssignmentResult, error) {
+func (r *Repository) AssignInstance(ctx context.Context, sessionID string, instanceID string, publicIP string, adopted bool) (InstanceAssignmentResult, error) {
 	sessionID = strings.TrimSpace(sessionID)
-	dropletID = strings.TrimSpace(dropletID)
-	dropletIP = strings.TrimSpace(dropletIP)
-	if sessionID == "" || dropletID == "" {
-		return DropletAssignmentResult{}, ErrNotFound
+	instanceID = strings.TrimSpace(instanceID)
+	publicIP = strings.TrimSpace(publicIP)
+	if sessionID == "" || instanceID == "" {
+		return InstanceAssignmentResult{}, ErrNotFound
 	}
 	now := formatSQLiteTime(r.now())
 	nextStatus := "provisioning"
-	if dropletIP != "" {
+	if publicIP != "" {
 		nextStatus = "waiting_for_dns"
 	}
-	eventType := "provisioning.droplet_created"
-	message := "Session droplet created"
+	eventType := "provisioning.instance_created"
+	message := "Session instance created"
 	if adopted {
-		eventType = "provisioning.droplet_adopted"
-		message = "Existing session droplet adopted"
+		eventType = "provisioning.instance_adopted"
+		message = "Existing session instance adopted"
 	}
-	if dropletIP == "" {
+	if publicIP == "" {
 		eventType = "provisioning.waiting_for_ip"
-		message = "Session droplet assigned; waiting for public IPv4"
+		message = "Session instance assigned; waiting for public IPv4"
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return DropletAssignmentResult{}, fmt.Errorf("begin assign droplet: %w", err)
+		return InstanceAssignmentResult{}, fmt.Errorf("begin assign instance: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var currentStatus string
-	var existingDropletID, existingDropletIP sql.NullString
-	err = tx.QueryRowContext(ctx, `select status, droplet_id, droplet_ip from sessions where id = ?;`, sessionID).Scan(&currentStatus, &existingDropletID, &existingDropletIP)
+	var existingInstanceID, existingPublicIP sql.NullString
+	err = tx.QueryRowContext(ctx, `select status, instance_id, public_ip from sessions where id = ?;`, sessionID).Scan(&currentStatus, &existingInstanceID, &existingPublicIP)
 	if errors.Is(err, sql.ErrNoRows) {
-		return DropletAssignmentResult{}, nil
+		return InstanceAssignmentResult{}, nil
 	}
 	if err != nil {
-		return DropletAssignmentResult{}, fmt.Errorf("read session before assign droplet: %w", err)
+		return InstanceAssignmentResult{}, fmt.Errorf("read session before assign instance: %w", err)
 	}
 	if currentStatus == "tearing_down" {
-		if existingDropletID.Valid && existingDropletID.String == dropletID && nullStringValue(existingDropletIP) == dropletIP {
-			return DropletAssignmentResult{Accepted: true, Status: currentStatus}, nil
+		if existingInstanceID.Valid && existingInstanceID.String == instanceID && nullStringValue(existingPublicIP) == publicIP {
+			return InstanceAssignmentResult{Accepted: true, Status: currentStatus}, nil
 		}
 		result, err := tx.ExecContext(ctx, `
 update sessions
-set droplet_id = ?,
-    droplet_ip = nullif(?, ''),
+set instance_id = ?,
+    public_ip = nullif(?, ''),
     updated_at = ?
 where id = ? and status = 'tearing_down';
-`, dropletID, dropletIP, now, sessionID)
+`, instanceID, publicIP, now, sessionID)
 		if err != nil {
-			return DropletAssignmentResult{}, fmt.Errorf("assign droplet during teardown: %w", err)
+			return InstanceAssignmentResult{}, fmt.Errorf("assign instance during teardown: %w", err)
 		}
 		changed, err := result.RowsAffected()
 		if err != nil {
-			return DropletAssignmentResult{}, fmt.Errorf("read teardown droplet assignment rows affected: %w", err)
+			return InstanceAssignmentResult{}, fmt.Errorf("read teardown instance assignment rows affected: %w", err)
 		}
 		if changed == 0 {
-			return DropletAssignmentResult{}, nil
+			return InstanceAssignmentResult{}, nil
 		}
-		if _, err := appendEvent(ctx, tx, sessionID, "teardown.droplet_discovered", "Session droplet discovered after force destroy request", nil, now); err != nil {
-			return DropletAssignmentResult{}, err
+		if _, err := appendEvent(ctx, tx, sessionID, "teardown.instance_discovered", "Session instance discovered after force destroy request", nil, now); err != nil {
+			return InstanceAssignmentResult{}, err
 		}
 		if err := tx.Commit(); err != nil {
-			return DropletAssignmentResult{}, fmt.Errorf("commit teardown droplet assignment: %w", err)
+			return InstanceAssignmentResult{}, fmt.Errorf("commit teardown instance assignment: %w", err)
 		}
-		return DropletAssignmentResult{Accepted: true, Changed: true, Status: currentStatus}, nil
+		return InstanceAssignmentResult{Accepted: true, Changed: true, Status: currentStatus}, nil
 	}
 	if currentStatus != "provisioning" {
-		return DropletAssignmentResult{Status: currentStatus}, nil
+		return InstanceAssignmentResult{Status: currentStatus}, nil
 	}
-	if dropletIP == "" && existingDropletID.Valid && existingDropletID.String == dropletID && !existingDropletIP.Valid {
-		return DropletAssignmentResult{Accepted: true, Status: currentStatus}, nil
+	if publicIP == "" && existingInstanceID.Valid && existingInstanceID.String == instanceID && !existingPublicIP.Valid {
+		return InstanceAssignmentResult{Accepted: true, Status: currentStatus}, nil
 	}
 
 	result, err := tx.ExecContext(ctx, `
 update sessions
 set status = ?,
-    droplet_id = ?,
-    droplet_ip = nullif(?, ''),
+    instance_id = ?,
+    public_ip = nullif(?, ''),
     last_error = null,
     last_error_at = null,
     last_error_phase = null,
     updated_at = ?
 where id = ? and status = 'provisioning';
-`, nextStatus, dropletID, dropletIP, now, sessionID)
+`, nextStatus, instanceID, publicIP, now, sessionID)
 	if err != nil {
-		return DropletAssignmentResult{}, fmt.Errorf("assign droplet: %w", err)
+		return InstanceAssignmentResult{}, fmt.Errorf("assign instance: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return DropletAssignmentResult{}, fmt.Errorf("read assign droplet rows affected: %w", err)
+		return InstanceAssignmentResult{}, fmt.Errorf("read assign instance rows affected: %w", err)
 	}
 	if changed == 0 {
-		return DropletAssignmentResult{}, nil
+		return InstanceAssignmentResult{}, nil
 	}
 	if _, err := appendEvent(ctx, tx, sessionID, eventType, message, nil, now); err != nil {
-		return DropletAssignmentResult{}, err
+		return InstanceAssignmentResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return DropletAssignmentResult{}, fmt.Errorf("commit assign droplet: %w", err)
+		return InstanceAssignmentResult{}, fmt.Errorf("commit assign instance: %w", err)
 	}
-	return DropletAssignmentResult{Accepted: true, Changed: true, Status: nextStatus}, nil
+	return InstanceAssignmentResult{Accepted: true, Changed: true, Status: nextStatus}, nil
 }
 
 func (r *Repository) MarkForceDestroyStarted(ctx context.Context, sessionID string) (bool, error) {
@@ -433,16 +433,16 @@ where id = ? and status in ('provisioning', 'waiting_for_dns', 'failed');
 	})
 }
 
-func (r *Repository) MarkForceDestroyed(ctx context.Context, sessionID string, dropletID string) (bool, error) {
+func (r *Repository) MarkForceDestroyed(ctx context.Context, sessionID string, instanceID string) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return false, ErrNotFound
 	}
-	dropletID = strings.TrimSpace(dropletID)
+	instanceID = strings.TrimSpace(instanceID)
 	now := formatSQLiteTime(r.now())
 	message := "Session server force destroyed"
-	if dropletID != "" {
-		message += " (droplet " + dropletID + ")"
+	if instanceID != "" {
+		message += " (instance " + instanceID + ")"
 	}
 	return r.execSessionTransition(ctx, sessionID, sessionTransition{
 		operation: "mark force destroyed",
@@ -576,7 +576,7 @@ update session_access_tokens set last_used_at = ? where id = ?;
 	return JoinResult{Session: s, Token: token}, nil
 }
 
-// IssueMachineToken returns plaintext once and refuses to rotate after droplet assignment so existing callback auth stays valid.
+// IssueMachineToken returns plaintext once and refuses to rotate after instance assignment so existing callback auth stays valid.
 func (r *Repository) IssueMachineToken(ctx context.Context, sessionID string) (MachineTokenIssue, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -591,16 +591,16 @@ func (r *Repository) IssueMachineToken(ctx context.Context, sessionID string) (M
 	defer func() { _ = tx.Rollback() }()
 
 	var existingHash sql.NullString
-	var dropletID sql.NullString
+	var instanceID sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-select machine_token_hash, droplet_id from sessions where id = ?;
-`, sessionID).Scan(&existingHash, &dropletID); err != nil {
+select machine_token_hash, instance_id from sessions where id = ?;
+`, sessionID).Scan(&existingHash, &instanceID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return MachineTokenIssue{}, ErrNotFound
 		}
 		return MachineTokenIssue{}, fmt.Errorf("load session for machine token issue: %w", err)
 	}
-	if dropletID.Valid {
+	if instanceID.Valid {
 		return MachineTokenIssue{}, ErrMachineTokenLocked
 	}
 
@@ -612,7 +612,7 @@ select machine_token_hash, droplet_id from sessions where id = ?;
 	message := "Machine token issued for provisioning"
 	if existingHash.Valid {
 		eventType = "session.machine_token_rotated"
-		message = "Machine token rotated before droplet assignment"
+		message = "Machine token rotated before instance assignment"
 	}
 
 	if _, err := tx.ExecContext(ctx, `

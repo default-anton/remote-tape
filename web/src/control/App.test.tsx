@@ -162,7 +162,7 @@ describe("control app", () => {
     const session = makeSession({ id: "sess_detail", slug: "detail", title: "Detail" });
     const events = [
       makeEvent(session, { id: 1, type: "session.created", message: "Created" }),
-      makeEvent(session, { id: 2, type: "droplet.create.started", message: "Creating droplet" }),
+      makeEvent(session, { id: 2, type: "instance.create.started", message: "Creating instance" }),
       makeEvent(session, { id: 3, type: "dns.create.succeeded", message: "DNS ready" }),
       makeEvent(session, { id: 4, type: "session.ready", message: "Ready" }),
     ];
@@ -192,12 +192,12 @@ describe("control app", () => {
     expect(await screen.findByRole("heading", { name: "Detail" })).toBeInTheDocument();
     const eventTypes = screen
       .getAllByText(
-        /^(session\.created|droplet\.create\.started|dns\.create\.succeeded|session\.ready)$/,
+        /^(session\.created|instance\.create\.started|dns\.create\.succeeded|session\.ready)$/,
       )
       .map((item) => item.textContent);
     expect(eventTypes).toEqual([
       "session.created",
-      "droplet.create.started",
+      "instance.create.started",
       "dns.create.succeeded",
       "session.ready",
     ]);
@@ -231,7 +231,7 @@ describe("control app", () => {
     expect(screen.queryByText("Host join link")).not.toBeInTheDocument();
     expect(screen.queryByText("Guest join link")).not.toBeInTheDocument();
     expect(screen.getByText("session.created")).toBeInTheDocument();
-    expect(screen.queryByText("droplet.create.succeeded")).not.toBeInTheDocument();
+    expect(screen.queryByText("instance.create.succeeded")).not.toBeInTheDocument();
     expect(screen.queryByText("session.ready")).not.toBeInTheDocument();
     expect(screen.queryByText("heartbeat")).not.toBeInTheDocument();
   });
@@ -239,7 +239,7 @@ describe("control app", () => {
   it("renders failed session error details", async () => {
     renderApp("/sessions/sess_joinable_failed?scenario=failed");
 
-    expect(await screen.findByText("droplet health check failed")).toBeInTheDocument();
+    expect(await screen.findByText("instance health check failed")).toBeInTheDocument();
     expect(screen.getByText("health_check")).toBeInTheDocument();
   });
 
@@ -247,7 +247,7 @@ describe("control app", () => {
     renderApp("/sessions/sess_joinable_provisioning_failed?scenario=provisioning_failed");
 
     expect(
-      await screen.findByText("DigitalOcean create droplet request failed: rate limited"),
+      await screen.findByText("DigitalOcean create instance request failed: rate limited"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("provisioning").length).toBeGreaterThan(0);
     expect(screen.getByText("provisioning.started")).toBeInTheDocument();

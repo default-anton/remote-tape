@@ -4,7 +4,7 @@ remote-tape is a free, open-source remote podcast recorder for indie podcasters,
 
 Simplest viable control plane:
 
-> One small persistent DigitalOcean droplet running one Go service, one SQLite database, one background worker loop, and one Caddy/Nginx reverse proxy. No Kubernetes, no queue, no separate scheduler, no distributed control plane.
+> One small persistent DigitalOcean instance running one Go service, one SQLite database, one background worker loop, and one Caddy/Nginx reverse proxy. No Kubernetes, no queue, no separate scheduler, no distributed control plane.
 
 Code is the source of truth for implemented schema, routes, config, middleware, package choices, and UI wiring. This document should hold durable architecture, invariants, and contracts that are bigger than any one implementation slice.
 
@@ -16,16 +16,16 @@ The control plane owns:
 
 1. User/dashboard app
 2. Session records and join links
-3. DigitalOcean droplet lifecycle
+3. session instance lifecycle
 4. Cloudflare DNS records for session rooms
-5. Redirecting guests to the correct session droplet
+5. Redirecting guests to the correct session server
 6. Cleanup/retry/reconciliation
 
-It must **not** handle recording traffic, LiveKit traffic, chunk uploads, TURN, or media paths. Those belong on the per-session droplet.
+It must **not** handle recording traffic, LiveKit traffic, chunk uploads, TURN, or media paths. Those belong on the per-session server.
 
 ### Session runtime
 
-Each recording session gets a disposable per-session droplet that owns:
+Each recording session gets a disposable per-session server that owns:
 
 1. Room app
 2. LiveKit/TURN runtime
@@ -33,7 +33,7 @@ Each recording session gets a disposable per-session droplet that owns:
 4. Local session data
 5. Upload/finalization of recordings
 
-Do not destroy a session droplet until upload finalization is safe and recordings have been manually downloaded.
+Do not destroy a session server until upload finalization is safe and recordings have been manually downloaded.
 
 ## High-level architecture
 
@@ -52,7 +52,7 @@ control.remote-tape.example
   +--> Cloudflare API
   |
   v
-session droplet
+session server
   |
   +--> room app
   +--> LiveKit/TURN
@@ -63,7 +63,7 @@ session droplet
 Use boring deployment:
 
 ```txt
-control-plane droplet
+control-plane host
   /opt/remote-tape/control-plane
   /var/lib/remote-tape/control-plane.db
   /var/log/remote-tape/control-plane.log
@@ -79,7 +79,7 @@ reverse proxy:
 
 The control-plane database stores desired/observed session state, access tokens, and an append-only event timeline. Implemented schema and indexes live in `internal/database/migrate.go`; repository behavior lives in `internal/session`.
 
-Do not store recording chunks, media manifests, or upload state in the control-plane database. Those belong on the per-session droplet.
+Do not store recording chunks, media manifests, or upload state in the control-plane database. Those belong on the per-session server.
 
 Keep lifecycle status coarse. Do not add separate statuses for every failure mode. Persist detailed failure context and timeline events instead.
 
@@ -110,11 +110,11 @@ Implemented HTTP routing and middleware live in `internal/server`. This document
 
 - Dashboard/session-management APIs require admin dashboard auth.
 - Join links are public control-plane URLs authenticated by unguessable per-session access tokens.
-- Session-droplet callbacks are authenticated by per-session machine tokens.
-- Join links and session-droplet callbacks must not use dashboard cookies as their auth boundary.
+- Session-server callbacks are authenticated by per-session machine tokens.
+- Join links and session-server callbacks must not use dashboard cookies as their auth boundary.
 - Browser-initiated unsafe dashboard actions require CSRF protection.
 - Raw host/guest join tokens are returned only at creation/rotation time; only hashes are stored afterward.
-- Machine tokens are issued during provisioning, stored only as hashes, and passed in plaintext only to the target session droplet boot config.
+- Machine tokens are issued during provisioning, stored only as hashes, and passed in plaintext only to the target session server boot config.
 
 Avoid OAuth, user accounts, teams, and email magic links until the product actually needs them.
 
@@ -130,26 +130,26 @@ Reconciliation must be:
 - safe after process crashes
 - safe after partial DigitalOcean or Cloudflare failures
 
-Tag every session droplet:
+Tag every session server:
 
 ```txt
 remote-tape
 remote-tape-session:<session_id>
 ```
 
-If the database says no droplet exists but DigitalOcean already has one with the session tag, adopt it.
+If the database says no instance exists but DigitalOcean already has one with the session tag, adopt it.
 
-Machine-token retry rule: rotate only before a droplet is assigned or adopted. Once a droplet exists, keep its callback token valid unless the droplet is explicitly reconfigured.
+Machine-token retry rule: rotate only before an instance is assigned or adopted. Once an instance exists, keep its callback token valid unless the instance is explicitly reconfigured.
 
-That single rule prevents most leaked-droplet failure modes.
+That single rule prevents most leaked-instance failure modes.
 
 Keep the reconciler in-process for now. Do not add Redis, BullMQ, Celery, Temporal, or a separate worker service yet.
 
-## Droplet boot contract
+## Session server boot contract
 
 Use a prebuilt snapshot/image if possible. Cloud-init should only write config, not install the world.
 
-The session droplet image should contain:
+The session server image should contain:
 
 ```txt
 LiveKit
@@ -159,9 +159,9 @@ Caddy/Nginx
 systemd units
 ```
 
-Boot config must include enough information for the droplet to identify the session, serve the room domain, connect back to the control plane, and authenticate callbacks with its machine token.
+Boot config must include enough information for the instance to identify the session, serve the room domain, connect back to the control plane, and authenticate callbacks with its machine token.
 
-The session droplet signals readiness through an authenticated control-plane callback. Only then should the control plane mark the room as ready or redirect users to it.
+The session server signals readiness through an authenticated control-plane callback. Only then should the control plane mark the room as ready or redirect users to it.
 
 ## Browser recording expectations
 
@@ -201,25 +201,25 @@ Capture rules:
 
 ## Cleanup and manual-download safety
 
-Ending a session must not immediately destroy the droplet.
+Ending a session must not immediately destroy the instance.
 
 Correct sequence:
 
 ```txt
 host ends session
   -> control plane marks session finalizing
-  -> session droplet finishes uploads/manifests
-  -> session droplet reports finalized recordings
+  -> session server finishes uploads/manifests
+  -> session server reports finalized recordings
   -> control plane marks awaiting_manual_download
   -> host downloads recordings from the session server
   -> host explicitly confirms download in the dashboard
   -> control plane marks teardown_pending
   -> reconciler deletes DNS
-  -> reconciler destroys droplet
+  -> reconciler destroys instance
   -> session ended
 ```
 
-Finalization means recordings are safely prepared. It does not mean the droplet is safe to destroy. Do not silently destroy a droplet that may still have unfinalized or undownloaded recordings.
+Finalization means recordings are safely prepared. It does not mean the instance is safe to destroy. Do not silently destroy an instance that may still have unfinalized or undownloaded recordings.
 
 Have hard fallback policies:
 
@@ -228,7 +228,7 @@ if finalizing > N hours:
   require manual/admin retry or forced teardown
 
 if awaiting_manual_download > N days:
-  keep droplet alive by default
+  keep instance alive by default
   show admin warning/cost notice
   require explicit manual/admin forced teardown
 ```
@@ -237,7 +237,7 @@ if awaiting_manual_download > N days:
 
 The control plane exposes health/readiness endpoints; implemented response details live in `internal/server`.
 
-Session droplets must expose a health endpoint that proves the room app, LiveKit/TURN, recording server, and disk are ready enough for users. The control plane must not route users to a session droplet until this passes and the authenticated readiness callback has been accepted.
+Session servers must expose a health endpoint that proves the room app, LiveKit/TURN, recording server, and disk are ready enough for users. The control plane must not route users to a session server until this passes and the authenticated readiness callback has been accepted.
 
 ## DNS model
 
@@ -245,7 +245,7 @@ Keep it simple:
 
 ```txt
 control.example.com                   -> persistent control plane
-room-<opaque-id>.sessions.example.com -> per-session droplet IP
+room-<opaque-id>.sessions.example.com -> per-session server IP
 ```
 
 Room IDs are opaque, DNS-safe labels generated by the control plane. Do not derive room DNS labels from user-facing join slugs; slugs are for stable control-plane URLs, while room domains are operational routing targets with DNS length/character constraints.
@@ -256,7 +256,7 @@ Join links remain stable control-plane URLs:
 https://control.example.com/join/my-session?token=...
 ```
 
-The user-facing join link must not point directly to the session droplet. That gives the control plane a chance to show waiting/errors/retries.
+The user-facing join link must not point directly to the session server. That gives the control plane a chance to show waiting/errors/retries.
 
 ## Security basics
 
@@ -265,9 +265,9 @@ Minimum viable:
 - Random unguessable session IDs.
 - Separate host and guest join-link tokens.
 - Hash all join-link and machine tokens before storage.
-- Per-session machine token for droplet-to-control callbacks.
-- DO and Cloudflare tokens only live on the control-plane droplet.
-- Session droplets never receive DO/Cloudflare credentials.
+- Per-session machine token for instance-to-control callbacks.
+- DO and Cloudflare tokens only live on the control-plane host.
+- Session servers never receive DO/Cloudflare credentials.
 - Dashboard auth starts as single-admin cookie auth.
 - Production requires a password hash, not a plaintext admin password.
 - Development may allow a plaintext dev password for fast local setup.
@@ -283,7 +283,7 @@ Need this from day one:
 2. Session event timeline
 3. Admin/debug page per session
 4. Reconciler error messages persisted in the database
-5. “Adopted existing droplet” events
+5. “Adopted existing instance” events
 
 This is much more valuable than premature metrics.
 
@@ -292,7 +292,7 @@ This is much more valuable than premature metrics.
 Use one small TypeScript/React frontend workspace for both user-facing surfaces:
 
 1. **Control UI**: dashboard, session creation, session status, join-link waiting pages, and manual download confirmation. Built as static assets and embedded in the control-plane Go binary.
-2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session droplet.
+2. **Room UI**: participant room shell, local recording controls/status, upload/finalization status, and recovery UX. Built from the same frontend workspace but deployed to the per-session server.
 
 The room UI must not route recording media or chunk ingest through the control plane.
 
@@ -360,4 +360,4 @@ That gives the right properties:
 - good enough for real users
 - not boxed into bad abstractions
 
-The key design choice is not “which queue/database/orchestrator.” It is making droplet lifecycle **state-driven, idempotent, and reconciled** instead of request-driven.
+The key design choice is not “which queue/database/orchestrator.” It is making instance lifecycle **state-driven, idempotent, and reconciled** instead of request-driven.

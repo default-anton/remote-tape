@@ -35,7 +35,7 @@ type GeneralSettings struct {
 }
 
 type ProvisioningSettings struct {
-	DefaultDropletSize  string
+	DefaultInstanceSize string
 	DefaultRegion       string
 	ImageID             string
 	DigitalOceanSSHKeys []string
@@ -57,7 +57,7 @@ type SecuritySettings struct {
 }
 
 type CleanupSettings struct {
-	OrphanedDropletTTL  time.Duration
+	OrphanedInstanceTTL time.Duration
 	CompletedSessionTTL time.Duration
 	FailedSessionTTL    time.Duration
 	LogsRetention       time.Duration
@@ -87,7 +87,7 @@ func Load() (Config, error) {
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
 		},
 		Provisioning: ProvisioningSettings{
-			DefaultDropletSize:  getEnv("REMOTE_TAPE_DEFAULT_DROPLET_SIZE", "s-2vcpu-2gb"),
+			DefaultInstanceSize: getEnv("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE", "s-2vcpu-2gb"),
 			DefaultRegion:       getEnv("REMOTE_TAPE_DEFAULT_REGION", "nyc3"),
 			ImageID:             getEnv("REMOTE_TAPE_IMAGE_ID", "ubuntu-24-04-x64"),
 			DigitalOceanSSHKeys: splitCSV(os.Getenv("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS")),
@@ -124,7 +124,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	cfg.Cleanup.OrphanedDropletTTL, err = getDuration("REMOTE_TAPE_ORPHANED_DROPLET_TTL", "2h")
+	cfg.Cleanup.OrphanedInstanceTTL, err = getDuration("REMOTE_TAPE_ORPHANED_INSTANCE_TTL", "2h")
 	if err != nil {
 		return Config{}, err
 	}
@@ -175,8 +175,8 @@ func (c Config) Validate() error {
 		errs = append(errs, errors.New("REMOTE_TAPE_LOG_LEVEL must be debug, info, warn, or error"))
 	}
 
-	if strings.TrimSpace(c.Provisioning.DefaultDropletSize) == "" {
-		errs = append(errs, errors.New("REMOTE_TAPE_DEFAULT_DROPLET_SIZE is required"))
+	if strings.TrimSpace(c.Provisioning.DefaultInstanceSize) == "" {
+		errs = append(errs, errors.New("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE is required"))
 	}
 	if strings.TrimSpace(c.Provisioning.DefaultRegion) == "" {
 		errs = append(errs, errors.New("REMOTE_TAPE_DEFAULT_REGION is required"))
@@ -229,8 +229,8 @@ func (c Config) Validate() error {
 	if c.Security.LoginRateLimitWindow <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_LOGIN_RATE_LIMIT_WINDOW must be positive"))
 	}
-	if c.Cleanup.OrphanedDropletTTL <= 0 {
-		errs = append(errs, errors.New("REMOTE_TAPE_ORPHANED_DROPLET_TTL must be positive"))
+	if c.Cleanup.OrphanedInstanceTTL <= 0 {
+		errs = append(errs, errors.New("REMOTE_TAPE_ORPHANED_INSTANCE_TTL must be positive"))
 	}
 	if c.Cleanup.CompletedSessionTTL <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_COMPLETED_SESSION_TTL must be positive"))
@@ -261,7 +261,7 @@ func (c Config) LogAttrs() []any {
 		"database_path", c.General.DatabasePath,
 		"control_plane_url", c.General.ControlPlaneURL,
 		"sessions_base_domain", c.General.SessionsBaseDomain,
-		"default_droplet_size", c.Provisioning.DefaultDropletSize,
+		"default_instance_size", c.Provisioning.DefaultInstanceSize,
 		"default_region", c.Provisioning.DefaultRegion,
 		"image_id", c.Provisioning.ImageID,
 		"digitalocean_ssh_key_count", len(c.Provisioning.DigitalOceanSSHKeys),
@@ -277,7 +277,7 @@ func (c Config) LogAttrs() []any {
 		"login_rate_limit_window", c.Security.LoginRateLimitWindow.String(),
 		"digitalocean_api_token", c.Security.DigitalOceanAPIToken.Redacted(),
 		"cloudflare_api_token", c.Security.CloudflareAPIToken.Redacted(),
-		"orphaned_droplet_ttl", c.Cleanup.OrphanedDropletTTL.String(),
+		"orphaned_instance_ttl", c.Cleanup.OrphanedInstanceTTL.String(),
 		"completed_session_ttl", c.Cleanup.CompletedSessionTTL.String(),
 		"failed_session_ttl", c.Cleanup.FailedSessionTTL.String(),
 		"logs_retention", c.Cleanup.LogsRetention.String(),
