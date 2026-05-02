@@ -10,20 +10,14 @@ Install frontend dependencies once:
 pnpm --dir web install
 ```
 
-Run locally with direnv and the Vite dev server proxying API calls to the Go control plane:
+Run locally with Overmind; `make dev` builds the Go control plane, loads `.envrc`, and starts it plus Vite:
 
 ```sh
 cp .env.example .envrc
-direnv allow
-
-# terminal 1
-go run ./cmd/control-plane
-
-# terminal 2
-pnpm --dir web dev
+make dev
 ```
 
-Open <http://127.0.0.1:5173/login> and sign in with `REMOTE_TAPE_DEV_ADMIN_PASSWORD` from `.envrc`. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
+Open <http://127.0.0.1:5173/login> and sign in with `REMOTE_TAPE_DEV_ADMIN_PASSWORD` from `.envrc`. Stop both processes with Ctrl-C. Use `pnpm --dir web dev:room` when working on the room bundle in isolation.
 
 For the embedded UI, build the frontend before building/running the Go binary. There are two bundles: the control bundle is embedded from `internal/controlui/dist/control` and owns login, join, and dashboard routes; the room bundle is built separately under `web/dist/room` for session instances.
 

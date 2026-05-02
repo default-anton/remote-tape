@@ -1,0 +1,2 @@
+api: ./tmp/control-plane-dev
+web: pnpm --dir web exec vite --host 127.0.0.1 --mode control

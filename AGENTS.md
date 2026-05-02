@@ -4,6 +4,8 @@ remote-tape is a free, open-source remote podcast recorder.
 
 Start with `DESIGN.md` for architecture, lifecycle, and recording targets; use `ROADMAP.md` for implementation slices. Code is source of truth after implementation.
 
+Dev app: `make dev` builds/starts control plane + Vite via `Procfile.dev`.
+
 ## Architecture boundaries
 
 - Control plane: persistent DigitalOcean droplet for dashboard, sessions, join links, provisioning, DNS, redirects, cleanup, and reconciliation.
