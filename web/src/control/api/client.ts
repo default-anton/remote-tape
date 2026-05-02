@@ -110,6 +110,13 @@ export function createSession(input: CreateSessionInput) {
   });
 }
 
+export function forceDestroySessionServer(id: string, confirmation: string) {
+  return requestJSON(`/api/sessions/${encodeURIComponent(id)}/force-destroy`, DetailSchema, {
+    method: "POST",
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
 export function joinSession(slug: string, token: string) {
   const params = new URLSearchParams({ token });
   return requestJSON(`/api/join/${encodeURIComponent(slug)}?${params}`, JoinResponseSchema);

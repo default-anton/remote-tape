@@ -117,5 +117,5 @@ func requiresCSRF(method, path string) bool {
 	if !strings.HasPrefix(path, "/api/sessions/") {
 		return false
 	}
-	return strings.HasSuffix(path, "/start") || strings.HasSuffix(path, "/end") || strings.HasSuffix(path, "/confirm-download") || strings.HasSuffix(path, "/retry")
+	return strings.HasSuffix(path, "/start") || strings.HasSuffix(path, "/end") || strings.HasSuffix(path, "/confirm-download") || strings.HasSuffix(path, "/retry") || strings.HasSuffix(path, "/force-destroy")
 }

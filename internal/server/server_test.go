@@ -167,6 +167,67 @@ func TestCreateAndGetSessionAPI(t *testing.T) {
 	}
 }
 
+func TestForceDestroySessionServerRequiresAuthCSRFAndConfirmation(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, csrf := loginTestAdmin(t, handler)
+
+	create := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"Destroyable","slug":"destroyable"}`))
+	addCookies(createReq, cookies)
+	createReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(create, createReq)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", create.Code, create.Body.String())
+	}
+	var created struct {
+		Session struct {
+			ID string `json:"id"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `update sessions set status = 'waiting_for_dns', droplet_id = '123' where id = ?;`, created.Session.ID); err != nil {
+		t.Fatalf("seed waiting_for_dns: %v", err)
+	}
+
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodPost, "/api/sessions/"+created.Session.ID+"/force-destroy", bytes.NewBufferString(`{"confirmation":"destroy destroyable"}`)))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d", unauthenticated.Code)
+	}
+
+	missingCSRF := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodPost, "/api/sessions/"+created.Session.ID+"/force-destroy", bytes.NewBufferString(`{"confirmation":"destroy destroyable"}`))
+	addCookies(missingReq, cookies)
+	handler.ServeHTTP(missingCSRF, missingReq)
+	if missingCSRF.Code != http.StatusForbidden {
+		t.Fatalf("missing csrf status = %d", missingCSRF.Code)
+	}
+
+	wrongConfirmation := httptest.NewRecorder()
+	wrongReq := httptest.NewRequest(http.MethodPost, "/api/sessions/"+created.Session.ID+"/force-destroy", bytes.NewBufferString(`{"confirmation":"destroy wrong"}`))
+	addCookies(wrongReq, cookies)
+	wrongReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(wrongConfirmation, wrongReq)
+	if wrongConfirmation.Code != http.StatusBadRequest {
+		t.Fatalf("wrong confirmation status = %d", wrongConfirmation.Code)
+	}
+
+	ok := httptest.NewRecorder()
+	okReq := httptest.NewRequest(http.MethodPost, "/api/sessions/"+created.Session.ID+"/force-destroy", bytes.NewBufferString(`{"confirmation":"destroy destroyable"}`))
+	addCookies(okReq, cookies)
+	okReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(ok, okReq)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("force destroy status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	if !strings.Contains(ok.Body.String(), `"status":"tearing_down"`) || !strings.Contains(ok.Body.String(), "session.force_destroy_started") {
+		t.Fatalf("force destroy response = %s", ok.Body.String())
+	}
+}
+
 func TestJoinAPIValidatesToken(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()

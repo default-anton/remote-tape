@@ -1,6 +1,6 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { useSessionDetail } from "../api/hooks";
+import { useForceDestroySessionServer, useSessionDetail } from "../api/hooks";
 import { Alert } from "../components/Alert";
 import { Icon } from "../components/Icon";
 import { Region, regionLabel } from "../components/Region";
@@ -43,6 +43,13 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
   const session = detail.session;
   const hasRuntime = Boolean(session.droplet_id || session.droplet_ip);
   const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
+  const canForceDestroy = ["provisioning", "waiting_for_dns", "failed"].includes(session.status);
+  const [confirmation, setConfirmation] = useState("");
+  const [forceDestroyOpen, setForceDestroyOpen] = useState(false);
+  const forceDestroy = useForceDestroySessionServer({
+    onSuccess: () => setForceDestroyOpen(false),
+  });
+  const expectedConfirmation = `destroy ${session.slug}`;
   return (
     <>
       <div className="detail-head">
@@ -60,6 +67,11 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           <button className="danger" type="button">
             ⦿ End session
           </button>
+          {canForceDestroy ? (
+            <button className="danger" type="button" onClick={() => setForceDestroyOpen(true)}>
+              Force destroy session server
+            </button>
+          ) : null}
           {hasRuntime ? (
             <button className="button ghost" type="button">
               ↻ Retry health check
@@ -113,6 +125,38 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <Info label="Provision attempts">{session.provision_attempts}</Info>
         <Info label="Created">{formatDateTime(session.created_at)}</Info>
       </section>
+      {forceDestroyOpen ? (
+        <section className="panel attention space">
+          <h2>Force destroy session server</h2>
+          <p>
+            This permanently deletes the DigitalOcean session server for this early lifecycle state.
+            Type <code>{expectedConfirmation}</code> to continue.
+          </p>
+          {forceDestroy.isError ? <Alert>{messageFromError(forceDestroy.error)}</Alert> : null}
+          <input
+            aria-label="Force destroy confirmation"
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+          <div className="detail-actions">
+            <button
+              className="button ghost"
+              type="button"
+              onClick={() => setForceDestroyOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="danger"
+              type="button"
+              disabled={confirmation !== expectedConfirmation || forceDestroy.isPending}
+              onClick={() => forceDestroy.mutate({ id: session.id, confirmation })}
+            >
+              {forceDestroy.isPending ? "Destroying…" : "Force destroy session server"}
+            </button>
+          </div>
+        </section>
+      ) : null}
       {session.last_error ? <FailureCard session={session} /> : null}
       {session.status === "awaiting_manual_download" ? (
         <ManualDownloadCard session={session} />

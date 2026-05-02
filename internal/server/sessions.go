@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/default-anton/remote-tape/internal/session"
 )
@@ -51,6 +53,10 @@ type joinTokenInfo struct {
 	Role string `json:"role"`
 }
 
+type forceDestroyRequest struct {
+	Confirmation string `json:"confirmation"`
+}
+
 func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -83,10 +89,16 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[1] == "force-destroy" {
+		s.apiForceDestroySession(w, r, parts[0])
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/")
+	id := path
 	if id == "" || strings.Contains(id, "/") {
 		http.NotFound(w, r)
 		return
@@ -101,6 +113,60 @@ func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) apiForceDestroySession(w http.ResponseWriter, r *http.Request, id string) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var req forceDestroyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body must be valid JSON")
+		return
+	}
+	detail, err := s.repo.GetSession(r.Context(), id)
+	if errors.Is(err, session.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		writeOperationError(w, http.StatusInternalServerError, "get session", err)
+		return
+	}
+	if !forceDestroyEligible(detail.Session.Status) {
+		writeError(w, http.StatusConflict, "session server can be force destroyed only while provisioning, waiting for DNS, or failed")
+		return
+	}
+	expected := "destroy " + detail.Session.Slug
+	if strings.TrimSpace(req.Confirmation) != expected {
+		writeError(w, http.StatusBadRequest, "confirmation must exactly match: "+expected)
+		return
+	}
+	opCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+	defer cancel()
+	changed, err := s.repo.MarkForceDestroyStarted(opCtx, detail.Session.ID)
+	if err != nil {
+		writeOperationError(w, http.StatusInternalServerError, "mark force destroy started", err)
+		return
+	}
+	if !changed {
+		writeError(w, http.StatusConflict, "session is no longer eligible for force destroy")
+		return
+	}
+	detail, err = s.repo.GetSession(opCtx, id)
+	if err != nil {
+		writeOperationError(w, http.StatusInternalServerError, "get session", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func forceDestroyEligible(status string) bool {
+	return status == "provisioning" || status == "waiting_for_dns" || status == "failed"
 }
 
 func (s *Server) apiJoin(w http.ResponseWriter, r *http.Request) {

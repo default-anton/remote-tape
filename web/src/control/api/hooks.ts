@@ -7,6 +7,7 @@ import {
 import {
   authSession,
   createSession,
+  forceDestroySessionServer,
   getSession,
   joinSession,
   listSessions,
@@ -35,6 +36,11 @@ type CreateSessionOptions = Pick<
 
 type LoginOptions = Pick<UseMutationOptions<void, Error, string>, "onError" | "onSuccess">;
 type LogoutOptions = Pick<UseMutationOptions<void, Error, void>, "onError" | "onSuccess">;
+type ForceDestroyInput = { id: string; confirmation: string };
+type ForceDestroyOptions = Pick<
+  UseMutationOptions<Detail, Error, ForceDestroyInput>,
+  "onError" | "onSuccess"
+>;
 
 export function useAuthSession() {
   return useQuery<AuthSession>({
@@ -104,6 +110,22 @@ export function useCreateSession(options: CreateSessionOptions = {}) {
         events: created.events,
       } satisfies Detail);
       await options.onSuccess?.(created, variables, onMutateResult, context);
+    },
+  });
+}
+
+export function useForceDestroySessionServer(options: ForceDestroyOptions = {}) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, confirmation }: ForceDestroyInput) =>
+      forceDestroySessionServer(id, confirmation),
+    retry: false,
+    ...options,
+    onSuccess: async (detail, variables, onMutateResult, context) => {
+      queryClient.setQueryData(sessionsKeys.detail(detail.session.id), detail);
+      await queryClient.invalidateQueries({ queryKey: sessionsKeys.list() });
+      await options.onSuccess?.(detail, variables, onMutateResult, context);
     },
   });
 }
