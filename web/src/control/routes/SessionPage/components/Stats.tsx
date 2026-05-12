@@ -23,38 +23,17 @@ export function Stats({ sessions }: { sessions: Session[] }) {
   }, [sessions]);
 
   return (
-    <div className="stats mock-stats">
-      <Stat tone="blue" icon="activity" label="Total" value={sessions.length} hint="All sessions" />
-      <Stat
-        tone="orange"
-        icon="spinner"
-        label="Provisioning"
-        value={counts.provisioning}
-        hint="Creating resources"
-      />
-      <Stat tone="green" icon="check" label="Ready" value={counts.ready} hint="Ready to start" />
-      <Stat
-        tone="blue"
-        icon="activity"
-        label="Active"
-        value={counts.active}
-        hint="Currently recording"
-      />
-      <Stat
-        tone="purple"
-        icon="download"
-        label="Awaiting download"
-        value={counts.awaiting}
-        hint="Recording complete"
-      />
-      <Stat
-        tone="red"
-        icon="triangle"
-        label="Failed"
-        value={counts.failed}
-        hint="Needs attention"
-      />
-    </div>
+    <section className="stats mock-stats" aria-label="Session summary">
+      <div className="stats-title">Sessions</div>
+      <div className="stat-pills">
+        <Stat tone="gray" icon="activity" label="Total" value={sessions.length} />
+        <Stat tone="orange" icon="spinner" label="Provisioning" value={counts.provisioning} />
+        <Stat tone="green" icon="check" label="Ready" value={counts.ready} />
+        <Stat tone="blue" icon="activity" label="Active" value={counts.active} />
+        <Stat tone="purple" icon="download" label="Awaiting download" value={counts.awaiting} />
+        <Stat tone="red" icon="triangle" label="Failed" value={counts.failed} />
+      </div>
+    </section>
   );
 }
 
@@ -63,25 +42,17 @@ function Stat({
   icon,
   label,
   value,
-  hint,
 }: {
   tone: string;
   icon: IconName;
   label: string;
   value: number;
-  hint: string;
 }) {
   return (
-    <div className="stat cardish" role="group" aria-label={`${label} sessions`}>
-      <div className={`round-icon ${tone}`}>
-        <Icon name={icon} />
-      </div>
-      <div className="stat-label">{label}</div>
+    <div className={`status stat-pill ${tone}`} role="group" aria-label={`${label} sessions`}>
+      <Icon name={icon} />
+      <span>{label}</span>
       <b>{value}</b>
-      <span className="muted">{hint}</span>
-      <svg className={`spark ${tone}`} viewBox="0 0 120 20" aria-hidden="true">
-        <path d="M2 12 C18 12 18 7 34 10 S50 16 66 9 82 6 98 12 112 11 118 8" />
-      </svg>
     </div>
   );
 }
