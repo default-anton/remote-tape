@@ -82,6 +82,47 @@ func TestCreateSessionPersistsSessionTokensAndEvent(t *testing.T) {
 	}
 }
 
+func TestListSessionsReturnsEmptySlice(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	sessions, err := repo.ListSessions(ctx)
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if sessions == nil {
+		t.Fatal("ListSessions() returned nil slice")
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("ListSessions() length = %d", len(sessions))
+	}
+}
+
+func TestGetSessionReturnsEmptySlices(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values ('sess_empty', 'empty-detail', 'Empty Detail', 'created', 'nyc3', 's-1vcpu-1gb', 'image', '2026-04-24T12:00:00.000000000Z', '2026-04-24T12:00:00.000000000Z');
+`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	detail, err := repo.GetSession(ctx, "sess_empty")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.AccessTokens == nil {
+		t.Fatal("AccessTokens is nil")
+	}
+	if detail.Events == nil {
+		t.Fatal("Events is nil")
+	}
+}
+
 func TestListProvisioningCandidatesReturnsCreatedOrderedAndBounded(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)

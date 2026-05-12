@@ -103,6 +103,48 @@ func TestReadyzReportsDatabaseFailure(t *testing.T) {
 	}
 }
 
+func TestListSessionsAPIReturnsEmptyArray(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	if strings.TrimSpace(response.Body.String()) != `{"sessions":[]}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+func TestGetSessionAPIReturnsEmptyArrays(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
+
+	if _, err := db.ExecContext(context.Background(), `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values ('sess_empty', 'empty-detail', 'Empty Detail', 'created', 'nyc3', 's-1vcpu-1gb', 'image', '2026-04-24T12:00:00.000000000Z', '2026-04-24T12:00:00.000000000Z');
+`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_empty", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"access_tokens":[]`) || !strings.Contains(body, `"events":[]`) {
+		t.Fatalf("body = %s", body)
+	}
+}
+
 func TestCreateAndGetSessionAPI(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()

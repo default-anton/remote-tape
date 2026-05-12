@@ -248,7 +248,7 @@ order by updated_at desc, created_at desc, id desc;
 	}
 	defer rows.Close()
 
-	var sessions []Session
+	sessions := make([]Session, 0)
 	for rows.Next() {
 		s, err := scanSession(rows)
 		if err != nil {
@@ -646,7 +646,7 @@ limit ?;
 	}
 	defer rows.Close()
 
-	var sessions []Session
+	sessions := make([]Session, 0)
 	for rows.Next() {
 		s, err := scanSession(rows)
 		if err != nil {
@@ -683,7 +683,7 @@ order by created_at, id;
 		return nil, fmt.Errorf("list access tokens: %w", err)
 	}
 	defer rows.Close()
-	var tokens []AccessToken
+	tokens := make([]AccessToken, 0)
 	for rows.Next() {
 		t, err := scanAccessToken(rows)
 		if err != nil {
@@ -708,7 +708,7 @@ order by id asc;
 		return nil, fmt.Errorf("list session events: %w", err)
 	}
 	defer rows.Close()
-	var events []Event
+	events := make([]Event, 0)
 	for rows.Next() {
 		e, err := scanEvent(rows)
 		if err != nil {
