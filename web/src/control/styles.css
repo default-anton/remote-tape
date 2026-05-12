@@ -329,7 +329,7 @@ h2 {
   margin-bottom: 30px;
 }
 .stat {
-  height: 160px;
+  min-height: 160px;
   padding: 19px 21px;
   position: relative;
 }
@@ -417,11 +417,11 @@ h2 {
   margin-left: 48px;
 }
 .spark {
-  bottom: 20px;
+  display: block;
   height: 22px;
-  left: 64px;
-  position: absolute;
-  width: 110px;
+  margin: 14px 0 0 48px;
+  max-width: 110px;
+  width: calc(100% - 48px);
 }
 .spark path {
   fill: none;
