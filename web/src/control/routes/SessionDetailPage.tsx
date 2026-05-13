@@ -56,11 +56,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <div>
           <h1>{session.title}</h1>
           <p>
-            <code>{session.id}</code>{" "}
-            <span className="copy-mini">
-              <Icon name="copy" />
-            </span>{" "}
-            <StatusBadge status={session.status} />
+            <code>{session.id}</code> <StatusBadge status={session.status} />
           </p>
         </div>
         <div className="detail-actions">
@@ -99,19 +95,16 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         </Info>
         <Info label="Instance ID">{value(session.instance_id)}</Info>
         <Info label="Session ID">
-          {session.id}{" "}
-          <span className="copy-mini">
-            <Icon name="copy" />
-          </span>
+          {session.id} <CopyMiniButton label="Copy session ID" value={session.id} />
         </Info>
         <Info label="Region">
           <Region region={session.instance_region} />
         </Info>
         <Info label="Public IP">
           {value(session.public_ip)}{" "}
-          <span className="copy-mini">
-            <Icon name="copy" />
-          </span>
+          {session.public_ip ? (
+            <CopyMiniButton label="Copy public IP" value={session.public_ip} />
+          ) : null}
         </Info>
         <Info label="Live heartbeat">
           {session.last_heartbeat_at ? (
@@ -232,6 +225,28 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
       <span className="info-label">{label}</span>
       <p>{children}</p>
     </div>
+  );
+}
+
+function CopyMiniButton({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <button
+      aria-label={label}
+      className="copy-mini"
+      title={copied ? "Copied" : label}
+      type="button"
+      onClick={copy}
+    >
+      <Icon name="copy" />
+    </button>
   );
 }
 

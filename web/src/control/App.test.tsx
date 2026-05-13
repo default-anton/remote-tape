@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   joinRefetchInterval,
   sessionDetailRefetchInterval,
@@ -169,6 +169,20 @@ describe("control app", () => {
       0,
     );
     expect(screen.getByText("dns_ready")).toBeInTheDocument();
+  });
+
+  it("copies the public IP from the session detail route", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    renderApp("/sessions/sess_joinable_ready?scenario=ready");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Copy public IP" }));
+
+    expect(writeText).toHaveBeenCalledWith("203.0.113.10");
   });
 
   it("renders timeline events in API order and access token last-used state", async () => {

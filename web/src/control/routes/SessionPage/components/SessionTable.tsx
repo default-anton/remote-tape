@@ -30,46 +30,50 @@ export function SessionTable({ sessions }: { sessions: Session[] }) {
           </tr>
         </thead>
         <tbody>
-          {sessions.slice(0, 10).map((session) => (
-            <tr key={session.id}>
-              <td>
-                <span className={`tiny-dot ${sessionStatusTone(session.status)}`} />
-                <Link
-                  className="row-title"
-                  to={{ pathname: `/sessions/${session.id}`, search: location.search }}
-                >
-                  {session.title}
-                </Link>
-                <br />
-                <span className="row-id">{session.id}</span>
-                <span className="copy-mini">
-                  <Icon name="copy" />
-                </span>
-              </td>
-              <td>
-                <StatusBadge status={session.status} />
-              </td>
-              <td>
-                <Region region={session.instance_region} />
-              </td>
-              <td>{domainFor(session)}</td>
-              <td>{formatDateTime(session.created_at)}</td>
-              <td>
-                {formatDateTime(session.updated_at)}{" "}
-                {session.status === "active" ? <span className="live-dot" /> : null}
-              </td>
-              <td>
-                <div className="actions">
-                  <button className="button icon-only" type="button">
-                    <Icon name={actionIcon(session.status)} />
-                  </button>
-                  <button className="button icon-only" type="button">
-                    <Icon name="more" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {sessions.slice(0, 10).map((session) => {
+            const roomDomain = domainFor(session);
+            return (
+              <tr key={session.id}>
+                <td>
+                  <span className={`tiny-dot ${sessionStatusTone(session.status)}`} />
+                  <Link
+                    className="row-title"
+                    to={{ pathname: `/sessions/${session.id}`, search: location.search }}
+                  >
+                    {session.title}
+                  </Link>
+                  <br />
+                  <span className="row-id">{session.id}</span>
+                </td>
+                <td>
+                  <StatusBadge status={session.status} />
+                </td>
+                <td>
+                  <Region region={session.instance_region} />
+                </td>
+                <td>
+                  <span className="domain-cell" title={roomDomain}>
+                    {roomDomain}
+                  </span>
+                </td>
+                <td>{formatDateTime(session.created_at)}</td>
+                <td>
+                  {formatDateTime(session.updated_at)}{" "}
+                  {session.status === "active" ? <span className="live-dot" /> : null}
+                </td>
+                <td>
+                  <div className="actions">
+                    <button className="button icon-only" type="button">
+                      <Icon name={actionIcon(session.status)} />
+                    </button>
+                    <button className="button icon-only" type="button">
+                      <Icon name="more" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="pager">

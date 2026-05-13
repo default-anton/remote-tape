@@ -605,6 +605,7 @@ td:nth-child(3) {
 }
 th:nth-child(4),
 td:nth-child(4) {
+  overflow: hidden;
   white-space: nowrap;
   width: 203px;
 }
@@ -653,10 +654,22 @@ tr:hover td {
     Menlo,
     monospace;
   margin-left: 22px;
-  max-width: calc(100% - 54px);
+  max-width: calc(100% - 22px);
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+  white-space: nowrap;
+}
+.domain-cell {
+  display: block;
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .copy-mini {
@@ -664,6 +677,23 @@ tr:hover td {
   display: inline-flex;
   margin-left: 6px;
   vertical-align: middle;
+}
+button.copy-mini {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  cursor: pointer;
+  min-width: 0;
+  padding: 2px;
+  width: auto;
+}
+button.copy-mini:hover {
+  background: rgb(255 255 255 / 6%);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text);
+  transform: none;
 }
 .copy-mini .icon {
   height: 13px;
