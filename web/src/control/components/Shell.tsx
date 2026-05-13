@@ -85,7 +85,8 @@ export function Shell({
             </b>
           </div>
           <button
-            className="operator operator-button"
+            aria-busy={logout.isPending}
+            className="button ghost operator operator-button"
             disabled={logout.isPending}
             onClick={() => logout.mutate()}
             type="button"

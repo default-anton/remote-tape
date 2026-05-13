@@ -151,6 +151,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
               Cancel
             </button>
             <button
+              aria-busy={forceDestroy.isPending}
               className="button danger"
               type="button"
               disabled={confirmation !== expectedConfirmation || forceDestroy.isPending}

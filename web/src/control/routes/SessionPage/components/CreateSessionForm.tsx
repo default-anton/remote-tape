@@ -218,10 +218,11 @@ export function CreateSessionForm({
           Cancel
         </Link>
         <button
+          aria-busy={busy}
+          aria-label="+ Create session"
           className="button primary"
           type="submit"
           disabled={disabled}
-          aria-label="+ Create session"
         >
           {busy ? (
             "Creating…"

@@ -70,6 +70,7 @@ export function LoginPage() {
           </label>
           {login.error ? <p role="alert">{login.error.message}</p> : null}
           <button
+            aria-busy={login.isPending || auth.isLoading}
             className="button primary"
             disabled={login.isPending || auth.isLoading}
             type="submit"
