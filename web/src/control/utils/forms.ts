@@ -4,9 +4,20 @@ export function blankAsUndefined(input: string) {
 }
 
 export function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 63);
+  let slug = "";
+  let lastDash = false;
+
+  for (const char of input.trim().toLowerCase()) {
+    if (/[a-z0-9]/.test(char)) {
+      slug += char;
+      lastDash = false;
+    } else if (!lastDash && slug.length > 0) {
+      slug += "-";
+      lastDash = true;
+    }
+    if (slug.length >= 63) break;
+  }
+
+  slug = slug.replace(/^-+|-+$/g, "");
+  return slug || "session";
 }

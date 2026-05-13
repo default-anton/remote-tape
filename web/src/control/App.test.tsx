@@ -19,9 +19,17 @@ import {
 import { createControlMockApi } from "./testing/handlers";
 import { renderApp } from "./testing/renderApp";
 import { SessionSchema } from "./types";
+import { slugify } from "./utils/forms";
 
 const mockApi = createControlMockApi();
 const server = setupServer(...mockApi.handlers);
+
+describe("form utilities", () => {
+  it("matches backend title slug derivation edge cases", () => {
+    expect(slugify("😄😄😄")).toBe("session");
+    expect(slugify(`${"a".repeat(62)}!?`)).toBe("a".repeat(62));
+  });
+});
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {

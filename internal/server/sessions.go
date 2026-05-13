@@ -95,7 +95,7 @@ func (s *Server) apiSessionSlug(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	slug := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/session-slugs/"), "/")
+	slug := strings.TrimPrefix(r.URL.Path, "/api/session-slugs/")
 	if slug == "" || strings.Contains(slug, "/") {
 		http.NotFound(w, r)
 		return

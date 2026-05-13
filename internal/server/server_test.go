@@ -282,6 +282,18 @@ func TestSlugAvailabilityAPI(t *testing.T) {
 			}
 		})
 	}
+
+	for _, path := range []string{"/api/session-slugs/nested/path", "/api/session-slugs/foo%2F", "/api/session-slugs/%2Ffoo"} {
+		t.Run("rejects slashes "+path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			addCookies(request, cookies)
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
 }
 
 func TestSlugAvailabilityAPIRequiresAuth(t *testing.T) {

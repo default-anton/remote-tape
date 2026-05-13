@@ -7,6 +7,7 @@ import {
 } from "./fixtures";
 import { detailForSession, scenario, validGuestToken, validHostToken } from "./scenarios";
 import type { CreateSessionInput, JoinResponse, Session } from "../types";
+import { slugify } from "../utils/forms";
 
 type CreatedSession = {
   session: Session;
@@ -208,10 +209,5 @@ function browserPathname() {
 }
 
 function slugFromTitle(title: string) {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 63);
-  return slug || "untitled-session";
+  return slugify(title);
 }
