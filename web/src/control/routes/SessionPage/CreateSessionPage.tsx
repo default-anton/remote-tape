@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useCreateSession, useSessions } from "../../api/hooks";
 import { Shell } from "../../components/Shell";
 import { CreateSessionForm } from "./components/CreateSessionForm";
@@ -27,6 +27,9 @@ export function CreateSessionPage() {
 
   return (
     <Shell active="sessions">
+      <p className="back">
+        <Link to={{ pathname: "/sessions", search: location.search }}>← Back to sessions</Link>
+      </p>
       <div className="page-head narrow-head">
         <div>
           <h1>Create session</h1>

@@ -969,7 +969,7 @@ button.copy-mini:hover {
 .create-grid {
   display: grid;
   gap: 22px;
-  grid-template-columns: minmax(580px, 1fr) 388px;
+  grid-template-columns: minmax(0, 1fr) 388px;
 }
 .form-panel {
   padding: 22px 20px 0;

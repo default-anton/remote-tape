@@ -481,6 +481,10 @@ describe("control app", () => {
   it("shows empty create-session text inputs with example placeholders", async () => {
     renderApp("/sessions/new");
 
+    expect(await screen.findByRole("link", { name: "← Back to sessions" })).toHaveAttribute(
+      "href",
+      "/sessions",
+    );
     const title = await screen.findByLabelText("Session title");
     const slug = screen.getByLabelText("Session slug");
 

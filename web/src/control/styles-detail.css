@@ -37,7 +37,7 @@
 }
 .lifecycle {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   margin-bottom: 14px;
   padding: 22px 32px 18px;
 }
@@ -58,6 +58,15 @@
 }
 .life-step:first-child::before {
   display: none;
+}
+@media (max-width: 1600px) {
+  .lifecycle {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    row-gap: 18px;
+  }
+  .life-step:nth-child(5n + 1)::before {
+    display: none;
+  }
 }
 .life-step.done::before,
 .life-step.current::before {
@@ -88,6 +97,8 @@
   display: block;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 .life-step small {
   display: block;
@@ -96,6 +107,10 @@
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) 407px;
+}
+.detail-grid > main,
+.detail-grid > aside {
+  min-width: 0;
 }
 .join-links {
   display: grid;
@@ -141,11 +156,17 @@ code {
   align-items: center;
   display: grid;
   gap: 14px;
-  grid-template-columns: 82px 14px 180px 1fr 90px;
+  grid-template-columns: 82px 14px minmax(150px, 180px) minmax(0, 1fr) 104px;
   min-height: 28px;
 }
 .events-card time {
   color: var(--muted);
+}
+.events-card b,
+.events-card p,
+.events-card time {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .event-line {
   background: var(--line);
