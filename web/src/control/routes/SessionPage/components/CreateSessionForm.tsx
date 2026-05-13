@@ -142,46 +142,46 @@ export function CreateSessionForm({
           help="Select the region closest to your guests for the best recording quality."
         >
           <div className="selectish">
-            <input
+            <select
               id="region"
-              list="region-options"
               value={region}
               onChange={(event) => updateRegion(event.target.value)}
-              placeholder={optionsLoading ? "Loading regions…" : "Use backend default"}
               disabled={!options || optionsLoading}
-            />
+            >
+              <option value="" disabled>
+                {optionsLoading ? "Loading regions…" : "Use backend default"}
+              </option>
+              {options?.regions.map((option) => (
+                <option key={option.slug} value={option.slug}>
+                  {option.label} ({option.slug})
+                </option>
+              ))}
+            </select>
             <Icon name="chevronDown" />
           </div>
-          <datalist id="region-options">
-            {options?.regions.map((option) => (
-              <option key={option.slug} value={option.slug} label={option.label} />
-            ))}
-          </datalist>
         </Field>
         <Field
           label="Instance size"
           help="Larger instances provide more headroom for high-bitrate recordings."
         >
-          <div className="input-wrap">
-            <input
+          <div className="input-wrap selectish">
+            <select
               id="size"
-              list="size-options"
               value={size}
               onChange={(event) => updateSize(event.target.value)}
-              placeholder={optionsLoading ? "Loading sizes…" : "Use backend default"}
-              disabled={!options || optionsLoading}
-            />
-            {size === options?.recommended_size_by_region[region] ? <span>Recommended</span> : null}
+              disabled={!options || optionsLoading || availableSizes.length === 0}
+            >
+              <option value="" disabled>
+                {optionsLoading ? "Loading sizes…" : "Use backend default"}
+              </option>
+              {availableSizes.map((option) => (
+                <option key={option.slug} value={option.slug}>
+                  {option.slug} — {option.label}, {option.description}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevronDown" />
           </div>
-          <datalist id="size-options">
-            {availableSizes.map((option) => (
-              <option
-                key={option.slug}
-                value={option.slug}
-                label={`${option.label} — ${option.description}`}
-              />
-            ))}
-          </datalist>
           {validationError ? <div className="field-error">{validationError}</div> : null}
         </Field>
         <Field label="Room subdomain" help="Your guests will use this link to join the session.">

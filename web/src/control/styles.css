@@ -848,6 +848,7 @@ label {
   text-align: right;
 }
 input,
+select,
 textarea {
   background: #121a20;
   border: 1px solid var(--line);
@@ -871,23 +872,20 @@ textarea {
   display: flex;
   overflow: hidden;
 }
-.input-wrap input,
-.selectish input {
+.selectish select {
+  appearance: none;
   border: 0;
+  padding-right: 36px;
 }
-.selectish > span {
-  padding-left: 12px;
+.selectish select:disabled {
+  color: var(--muted);
 }
 .selectish .icon {
   color: var(--muted);
+  flex: 0 0 auto;
+  margin-left: -28px;
   margin-right: 12px;
-}
-.input-wrap span {
-  background: #23401f;
-  border-radius: 999px;
-  color: #8add64;
-  margin-right: 10px;
-  padding: 3px 10px;
+  pointer-events: none;
 }
 .subdomain span {
   flex: 1;

@@ -413,7 +413,7 @@ describe("control app", () => {
     );
     renderApp("/sessions/new");
 
-    await screen.findByDisplayValue("s-2vcpu-4gb");
+    await waitFor(() => expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb"));
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "Recorded Post" },
     });
@@ -430,70 +430,36 @@ describe("control app", () => {
     expect(await screen.findByRole("heading", { name: "Recorded Post" })).toBeInTheDocument();
   });
 
-  it("filters provisioning options and blocks invalid create input", async () => {
-    let postRequests = 0;
-    server.use(
-      http.post("/api/sessions", async () => {
-        postRequests += 1;
-        return HttpResponse.json({ ok: false, error: "unexpected create" }, { status: 500 });
-      }),
-    );
+  it("filters size choices to the selected region", async () => {
     renderApp("/sessions/new");
 
-    expect(await screen.findByDisplayValue("nyc3")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("s-2vcpu-4gb")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
-    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
+    await waitFor(() => expect(screen.getByLabelText("Preferred region")).toHaveValue("nyc3"));
+    expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb");
+    expect(screen.queryByRole("option", { name: /c-2/ })).not.toBeInTheDocument();
 
-    expect(
-      await screen.findByText('Instance size "c-2" is not available in region "nyc3".'),
-    ).toBeInTheDocument();
-    expect(postRequests).toBe(0);
-  });
-
-  it("blocks unsupported typed region and size values", async () => {
-    renderApp("/sessions/new");
-
-    await screen.findByDisplayValue("nyc3");
-    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "moon1" } });
-    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
-    expect(
-      await screen.findByText(
-        'Unsupported region "moon1". Choose one of the suggested region slugs.',
-      ),
-    ).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "nyc3" } });
-    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "huge" } });
-    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
-    expect(
-      await screen.findByText(
-        'Unsupported instance size "huge". Choose one of the suggested size slugs.',
-      ),
-    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
+    expect(screen.getByRole("option", { name: /c-2/ })).toBeInTheDocument();
   });
 
   it("resets unavailable size to the region recommendation", async () => {
     renderApp("/sessions/new");
 
-    await screen.findByDisplayValue("nyc3");
-    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+    await waitFor(() => expect(screen.getByLabelText("Preferred region")).toHaveValue("nyc3"));
     fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
-    expect(screen.getByDisplayValue("c-2")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+    expect(screen.getByLabelText("Instance size")).toHaveValue("c-2");
     fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "nyc3" } });
-    expect(screen.getByDisplayValue("s-2vcpu-4gb")).toBeInTheDocument();
+    expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb");
   });
 
-  it("preserves size while typing a valid region slug", async () => {
+  it("preserves size when the next region supports it", async () => {
     renderApp("/sessions/new");
 
-    await screen.findByDisplayValue("nyc3");
-    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
-    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "s" } });
-    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sf" } });
+    await waitFor(() => expect(screen.getByLabelText("Preferred region")).toHaveValue("nyc3"));
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "s-2vcpu-2gb" } });
     fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
 
-    expect(screen.getByDisplayValue("c-2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-2gb");
   });
 
   it("describes selected provisioning options from the backend catalog", async () => {
@@ -533,7 +499,7 @@ describe("control app", () => {
   it("renders one-time join links after creating a session", async () => {
     renderApp("/sessions/new");
 
-    await screen.findByDisplayValue("s-2vcpu-4gb");
+    await waitFor(() => expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb"));
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "New Mock Session" },
     });
@@ -558,7 +524,7 @@ describe("control app", () => {
   it("renders duplicate slug validation errors from the server", async () => {
     renderApp("/sessions/new");
 
-    await screen.findByDisplayValue("s-2vcpu-4gb");
+    await waitFor(() => expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb"));
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "Joinable" },
     });
