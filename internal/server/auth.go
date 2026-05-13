@@ -104,7 +104,7 @@ func publicPath(path string) bool {
 }
 
 func protectedPath(path string) bool {
-	return path == "/api/sessions" || strings.HasPrefix(path, "/api/sessions/")
+	return path == "/api/sessions" || strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/api/session-slugs/")
 }
 
 func requiresCSRF(method, path string) bool {

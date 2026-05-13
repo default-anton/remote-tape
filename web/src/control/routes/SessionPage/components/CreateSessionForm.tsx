@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router";
+import { useSlugAvailability } from "../../../api/hooks";
 import { Alert } from "../../../components/Alert";
 import { Icon } from "../../../components/Icon";
-import type { CreateSessionInput, ProvisioningOptions } from "../../../types";
+import type { CreateSessionInput, ProvisioningOptions, SlugAvailability } from "../../../types";
 import { messageFromError } from "../../../utils/errors";
 import { blankAsUndefined, slugify } from "../../../utils/forms";
 import { Field } from "./Field";
@@ -33,6 +34,21 @@ export function CreateSessionForm({
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const appliedDefaults = useRef(false);
+  const effectiveSlug = slug.trim() || slugify(title);
+  const normalizedSlug = effectiveSlug.trim().toLowerCase();
+  const slugValidationError = validateSlugInput(normalizedSlug);
+  const debouncedSlug = useDebouncedValue(normalizedSlug, 300);
+  const slugAvailability = useSlugAvailability(
+    debouncedSlug && !slugValidationError ? debouncedSlug : undefined,
+  );
+  const slugStatus = slugAvailabilityStatus({
+    currentSlug: normalizedSlug,
+    debouncedSlug,
+    localError: slugValidationError,
+    availability: slugAvailability.data,
+    isFetching: slugAvailability.isFetching,
+    error: slugAvailability.error,
+  });
 
   useEffect(() => {
     if (!options || appliedDefaults.current) return;
@@ -79,7 +95,7 @@ export function CreateSessionForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!options) return;
+    if (!options || slugStatus.kind === "invalid" || slugStatus.kind === "taken") return;
     const error = validateProvisioningInput(options, region, size);
     if (error) {
       setValidationError(error);
@@ -93,7 +109,13 @@ export function CreateSessionForm({
     });
   }
 
-  const disabled = busy || optionsLoading || Boolean(optionsError) || !options;
+  const disabled =
+    busy ||
+    optionsLoading ||
+    Boolean(optionsError) ||
+    !options ||
+    slugStatus.kind === "invalid" ||
+    slugStatus.kind === "taken";
 
   return (
     <form className="create-form" onSubmit={submit}>
@@ -130,16 +152,16 @@ export function CreateSessionForm({
             value={slug}
             onChange={(event) => {
               setSlugDirty(true);
-              setSlug(event.target.value);
+              setSlug(event.target.value.toLowerCase());
             }}
             pattern="[a-z0-9-]{1,63}"
             placeholder="the-infra-podcast-313"
           />
           <div className="domain-preview" aria-live="polite">
             <span>Session server domain</span>
-            <strong>{slug || "session-slug"}.remote-tape.io</strong>
+            <strong>{normalizedSlug || "session-slug"}.remote-tape.io</strong>
           </div>
-          <div className="ok-line">✓ Slug is available</div>
+          <SlugAvailabilityLine status={slugStatus} />
         </Field>
         <Field
           label="Preferred region"
@@ -222,6 +244,95 @@ export function CreateSessionForm({
       </div>
     </form>
   );
+}
+
+type SlugStatus =
+  | { kind: "checking"; message: string }
+  | { kind: "available"; message: string }
+  | { kind: "taken"; message: string }
+  | { kind: "invalid"; message: string }
+  | { kind: "unknown"; message: string };
+
+function useDebouncedValue(value: string, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
+function SlugAvailabilityLine({ status }: { status: SlugStatus }) {
+  const className =
+    status.kind === "available"
+      ? "ok-line"
+      : status.kind === "checking" || status.kind === "unknown"
+        ? "hint-line"
+        : "field-error";
+  const prefix = status.kind === "available" ? "✓ " : "";
+  return (
+    <div className={className} aria-live="polite">
+      {prefix}
+      {status.message}
+    </div>
+  );
+}
+
+function slugAvailabilityStatus({
+  currentSlug,
+  debouncedSlug,
+  localError,
+  availability,
+  isFetching,
+  error,
+}: {
+  currentSlug: string;
+  debouncedSlug: string;
+  localError: string | null;
+  availability: SlugAvailability | undefined;
+  isFetching: boolean;
+  error: Error | null;
+}): SlugStatus {
+  if (localError) return { kind: "invalid", message: localError };
+  if (currentSlug !== debouncedSlug || isFetching) {
+    return { kind: "checking", message: "Checking slug…" };
+  }
+  if (error) {
+    return { kind: "unknown", message: "Could not check slug. We'll verify when creating." };
+  }
+  if (!availability || availability.normalized_slug !== currentSlug) {
+    return { kind: "checking", message: "Checking slug…" };
+  }
+  if (!availability.valid) {
+    return { kind: "invalid", message: messageForSlugReason(availability.reason) };
+  }
+  if (!availability.available) {
+    return { kind: "taken", message: messageForSlugReason(availability.reason) };
+  }
+  return { kind: "available", message: "Slug looks available" };
+}
+
+function validateSlugInput(slug: string) {
+  if (slug === "") return "Slug is required.";
+  if (slug.length > 63) return "Slug must be 63 characters or fewer.";
+  if (slug.startsWith("-") || slug.endsWith("-")) return "Slug must not start or end with a dash.";
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return "Slug may contain only lowercase letters, numbers, and dashes.";
+  }
+  return null;
+}
+
+function messageForSlugReason(reason: SlugAvailability["reason"]) {
+  switch (reason) {
+    case "taken":
+      return "Slug is already taken.";
+    case "invalid_format":
+      return "Slug is invalid.";
+    default:
+      return "Slug is unavailable.";
+  }
 }
 
 function validateProvisioningInput(options: ProvisioningOptions, region: string, size: string) {

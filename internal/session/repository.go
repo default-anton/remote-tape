@@ -47,6 +47,14 @@ type CreateResult struct {
 	InitialEventID int64
 }
 
+type SlugAvailability struct {
+	Slug           string  `json:"slug"`
+	NormalizedSlug string  `json:"normalized_slug"`
+	Available      bool    `json:"available"`
+	Valid          bool    `json:"valid"`
+	Reason         *string `json:"reason"`
+}
+
 type MachineTokenIssue struct {
 	SessionID string
 	Token     string
@@ -120,6 +128,31 @@ type JoinResult struct {
 
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db, now: func() time.Time { return time.Now().UTC() }}
+}
+
+func (r *Repository) CheckSlugAvailability(ctx context.Context, slug string) (SlugAvailability, error) {
+	availability := SlugAvailability{
+		Slug:           slug,
+		NormalizedSlug: normalizeSlugInput(slug),
+		Available:      false,
+		Valid:          false,
+	}
+	if err := validateSlug(availability.NormalizedSlug); err != nil {
+		availability.Reason = stringPtr("invalid_format")
+		return availability, nil
+	}
+	availability.Valid = true
+
+	exists, err := r.slugExists(ctx, availability.NormalizedSlug)
+	if err != nil {
+		return SlugAvailability{}, err
+	}
+	if exists {
+		availability.Reason = stringPtr("taken")
+		return availability, nil
+	}
+	availability.Available = true
+	return availability, nil
 }
 
 func (r *Repository) CreateSession(ctx context.Context, input CreateInput) (CreateResult, error) {
@@ -921,6 +954,10 @@ func validateDNSName(name string) error {
 
 func normalizeSlugInput(slug string) string {
 	return strings.ToLower(strings.TrimSpace(slug))
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func randomID(prefix string) (string, error) {

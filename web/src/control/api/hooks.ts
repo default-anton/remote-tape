@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   authSession,
+  checkSlugAvailability,
   createSession,
   forceDestroySessionServer,
   getSession,
@@ -24,7 +25,7 @@ import type {
   ProvisioningOptions,
   Session,
 } from "../types";
-import { joinKeys, sessionsKeys } from "./queryKeys";
+import { joinKeys, sessionsKeys, slugKeys } from "./queryKeys";
 
 const sessionPollIntervalMs = 5_000;
 
@@ -93,6 +94,15 @@ export function useSessionDetail(id: string | undefined) {
     queryFn: () => getSession(id ?? ""),
     enabled: Boolean(id),
     refetchInterval: (query) => sessionDetailRefetchInterval(query.state.data),
+  });
+}
+
+export function useSlugAvailability(slug: string | undefined) {
+  return useQuery({
+    queryKey: slugKeys.detail(slug ?? ""),
+    queryFn: () => checkSlugAvailability(slug ?? ""),
+    enabled: Boolean(slug),
+    retry: false,
   });
 }
 

@@ -91,6 +91,23 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) apiSessionSlug(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	slug := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/session-slugs/"), "/")
+	if slug == "" || strings.Contains(slug, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	availability, err := s.repo.CheckSlugAvailability(r.Context(), slug)
+	if err != nil {
+		writeOperationError(w, http.StatusInternalServerError, "check slug availability", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, availability)
+}
+
 func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/")
 	parts := strings.Split(path, "/")

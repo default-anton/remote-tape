@@ -62,6 +62,29 @@ export function createControlMockApi(): ControlMockApi {
       }
       return HttpResponse.json(detailForSession(session));
     }),
+    http.get("/api/session-slugs/:slug", ({ params, request }) => {
+      const slug = String(params.slug ?? "")
+        .trim()
+        .toLowerCase();
+      const valid = /^[a-z0-9-]{1,63}$/.test(slug) && !slug.startsWith("-") && !slug.endsWith("-");
+      if (!valid) {
+        return HttpResponse.json({
+          slug: String(params.slug ?? ""),
+          normalized_slug: slug,
+          available: false,
+          valid: false,
+          reason: "invalid_format",
+        });
+      }
+      const taken = sessionsFor(request).some((item) => item.slug === slug);
+      return HttpResponse.json({
+        slug: String(params.slug ?? ""),
+        normalized_slug: slug,
+        available: !taken,
+        valid: true,
+        reason: taken ? "taken" : null,
+      });
+    }),
     http.post("/api/sessions", async ({ request }) => {
       const input = (await request.json()) as Partial<CreateSessionInput>;
       const title = input.title?.trim() || "Untitled session";

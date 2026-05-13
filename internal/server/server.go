@@ -64,6 +64,7 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) (http.Handler, err
 	mux.HandleFunc("/login", srv.login)
 	mux.HandleFunc("/logout", srv.logout)
 	mux.HandleFunc("/api/auth/session", srv.apiAuthSession)
+	mux.HandleFunc("/api/session-slugs/", srv.apiSessionSlug)
 	mux.HandleFunc("/api/sessions", srv.apiSessions)
 	mux.HandleFunc("/api/sessions/", srv.apiSession)
 	mux.HandleFunc("/api/join/", srv.apiJoin)

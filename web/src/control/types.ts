@@ -92,6 +92,14 @@ export const SessionsResponseSchema = z.object({
   provisioning_options: ProvisioningOptionsSchema,
 });
 
+export const SlugAvailabilitySchema = z.object({
+  slug: z.string(),
+  normalized_slug: z.string(),
+  available: z.boolean(),
+  valid: z.boolean(),
+  reason: z.enum(["taken", "invalid_format"]).nullable(),
+});
+
 export const JoinLinkSchema = z.object({
   url: z.string(),
   role: z.enum(["host", "guest"]),
@@ -134,6 +142,7 @@ export const JoinResponseSchema = z.object({
 
 export type Session = z.infer<typeof SessionSchema>;
 export type ProvisioningOptions = z.infer<typeof ProvisioningOptionsSchema>;
+export type SlugAvailability = z.infer<typeof SlugAvailabilitySchema>;
 export type AccessToken = z.infer<typeof AccessTokenSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type Detail = z.infer<typeof DetailSchema>;

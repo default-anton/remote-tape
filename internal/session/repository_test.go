@@ -555,6 +555,43 @@ func TestCreateSessionRejectsDuplicateSlug(t *testing.T) {
 	}
 }
 
+func TestCheckSlugAvailability(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	if _, err := repo.CreateSession(ctx, CreateInput{Title: "Taken", Slug: "taken-slug", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"}); err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		slug       string
+		wantSlug   string
+		available  bool
+		valid      bool
+		wantReason *string
+	}{
+		{name: "available", slug: " New-Slug ", wantSlug: "new-slug", available: true, valid: true},
+		{name: "taken", slug: "taken-slug", wantSlug: "taken-slug", available: false, valid: true, wantReason: stringPtr("taken")},
+		{name: "invalid", slug: "-bad-", wantSlug: "-bad-", available: false, valid: false, wantReason: stringPtr("invalid_format")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.CheckSlugAvailability(ctx, tt.slug)
+			if err != nil {
+				t.Fatalf("CheckSlugAvailability() error = %v", err)
+			}
+			if got.Slug != tt.slug || got.NormalizedSlug != tt.wantSlug || got.Available != tt.available || got.Valid != tt.valid {
+				t.Fatalf("CheckSlugAvailability() = %+v", got)
+			}
+			if !equalStringPtr(got.Reason, tt.wantReason) {
+				t.Fatalf("Reason = %v, want %v", got.Reason, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestJoinSessionValidatesHashedTokenAndRecordsUse(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
@@ -609,6 +646,13 @@ func assertRoomDomain(t *testing.T, roomDomain *string, baseDomain string) {
 	if strings.Contains(label, "_") {
 		t.Fatalf("RoomDomain label = %q contains underscore", label)
 	}
+}
+
+func equalStringPtr(a *string, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func openSessionTestDB(t *testing.T, ctx context.Context) *sql.DB {

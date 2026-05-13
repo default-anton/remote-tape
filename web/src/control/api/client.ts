@@ -6,6 +6,7 @@ import {
   DetailSchema,
   JoinResponseSchema,
   SessionsResponseSchema,
+  SlugAvailabilitySchema,
   type CreateSessionInput,
 } from "../types";
 
@@ -101,6 +102,10 @@ export function listSessions() {
 
 export function getSession(id: string) {
   return requestJSON(`/api/sessions/${encodeURIComponent(id)}`, DetailSchema);
+}
+
+export function checkSlugAvailability(slug: string) {
+  return requestJSON(`/api/session-slugs/${encodeURIComponent(slug)}`, SlugAvailabilitySchema);
 }
 
 export function createSession(input: CreateSessionInput) {

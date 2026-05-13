@@ -434,6 +434,7 @@ describe("control app", () => {
     renderApp("/sessions/new");
 
     expect(await screen.findByText("the-infra-podcast-313.remote-tape.io")).toBeInTheDocument();
+    expect(await screen.findByText("Slug looks available", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Room subdomain")).not.toBeInTheDocument();
     expect(screen.queryByText(/join links/i)).not.toBeInTheDocument();
 
@@ -535,13 +536,31 @@ describe("control app", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("renders duplicate slug validation errors from the server", async () => {
+  it("disables creation when the slug availability check finds a duplicate", async () => {
     renderApp("/sessions/new");
 
     await waitFor(() => expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb"));
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "Joinable" },
     });
+
+    expect(await screen.findByText("Slug is already taken.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Create session" })).toBeDisabled();
+  });
+
+  it("renders duplicate slug validation errors from the server when create loses the race", async () => {
+    server.use(
+      http.post("/api/sessions", () =>
+        HttpResponse.json({ ok: false, error: "session slug already exists" }, { status: 409 }),
+      ),
+    );
+    renderApp("/sessions/new");
+
+    await waitFor(() => expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb"));
+    fireEvent.change(await screen.findByLabelText("Session title"), {
+      target: { value: "Race Winner" },
+    });
+    await screen.findByText("Slug looks available", { exact: false });
     fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
 
     expect(await screen.findByText("session slug already exists")).toBeInTheDocument();

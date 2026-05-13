@@ -910,6 +910,11 @@ textarea {
   font-size: 13px;
   margin-top: 6px;
 }
+.hint-line {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
 .field-error {
   color: var(--red);
   font-size: 13px;

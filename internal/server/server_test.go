@@ -234,6 +234,67 @@ func TestCreateAndGetSessionAPI(t *testing.T) {
 	}
 }
 
+func TestSlugAvailabilityAPI(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, csrf := loginTestAdmin(t, handler)
+
+	create := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(`{"title":"Taken","slug":"taken-slug"}`))
+	addCookies(createReq, cookies)
+	createReq.Header.Set("X-CSRF-Token", csrf)
+	handler.ServeHTTP(create, createReq)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", create.Code, create.Body.String())
+	}
+
+	tests := []struct {
+		name       string
+		path       string
+		available  bool
+		valid      bool
+		wantReason *string
+	}{
+		{name: "available", path: "/api/session-slugs/New-Slug", available: true, valid: true},
+		{name: "taken", path: "/api/session-slugs/taken-slug", available: false, valid: true, wantReason: ptr("taken")},
+		{name: "invalid", path: "/api/session-slugs/-bad-", available: false, valid: false, wantReason: ptr("invalid_format")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			addCookies(request, cookies)
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+			var body struct {
+				Available bool    `json:"available"`
+				Valid     bool    `json:"valid"`
+				Reason    *string `json:"reason"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body.Available != tt.available || body.Valid != tt.valid || !equalPtr(body.Reason, tt.wantReason) {
+				t.Fatalf("body = %+v", body)
+			}
+		})
+	}
+}
+
+func TestSlugAvailabilityAPIRequiresAuth(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/session-slugs/anything", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+}
+
 func TestCreateSessionProvisioningValidation(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -674,6 +735,17 @@ func TestDashboardAuthFlow(t *testing.T) {
 	if postLogout.Code != http.StatusUnauthorized {
 		t.Fatalf("post logout status = %d", postLogout.Code)
 	}
+}
+
+func ptr(value string) *string {
+	return &value
+}
+
+func equalPtr(a *string, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
