@@ -183,6 +183,7 @@ describe("control app", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Copy public IP" }));
 
     expect(writeText).toHaveBeenCalledWith("203.0.113.10");
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
   it("renders timeline events in API order and access token last-used state", async () => {

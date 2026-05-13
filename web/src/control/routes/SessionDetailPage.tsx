@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { useForceDestroySessionServer, useSessionDetail } from "../api/hooks";
 import { Alert } from "../components/Alert";
@@ -230,11 +230,17 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
 
 function CopyMiniButton({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    return () => window.clearTimeout(timeoutRef.current);
+  }, []);
 
   async function copy() {
     await navigator.clipboard.writeText(value);
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => setCopied(false), 1200);
   }
 
   return (
@@ -246,6 +252,7 @@ function CopyMiniButton({ label, value }: { label: string; value: string }) {
       onClick={copy}
     >
       <Icon name="copy" />
+      {copied ? <span className="copy-mini-feedback">Copied</span> : null}
     </button>
   );
 }

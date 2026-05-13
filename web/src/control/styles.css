@@ -679,11 +679,13 @@ tr:hover td {
   vertical-align: middle;
 }
 button.copy-mini {
+  align-items: center;
   background: transparent;
   border: 0;
   border-radius: 4px;
   box-shadow: none;
   cursor: pointer;
+  gap: 5px;
   min-width: 0;
   padding: 2px;
   width: auto;
@@ -698,6 +700,12 @@ button.copy-mini:hover {
 .copy-mini .icon {
   height: 13px;
   width: 13px;
+}
+.copy-mini-feedback {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
 .tiny-dot,
 .live-dot {
