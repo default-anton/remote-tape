@@ -122,7 +122,7 @@ export function CreateSessionForm({
         </Field>
         <Field
           label="Session slug"
-          help="Unique slug used in URLs and subdomains. Lowercase letters, numbers, and dashes only."
+          help="Used for the session server domain. Lowercase letters, numbers, and dashes only."
           count={`${slug.length} / 63`}
         >
           <input
@@ -135,6 +135,10 @@ export function CreateSessionForm({
             pattern="[a-z0-9-]{1,63}"
             placeholder="the-infra-podcast-313"
           />
+          <div className="domain-preview" aria-live="polite">
+            <span>Session server domain</span>
+            <strong>{slug || "session-slug"}.remote-tape.io</strong>
+          </div>
           <div className="ok-line">✓ Slug is available</div>
         </Field>
         <Field
@@ -183,23 +187,6 @@ export function CreateSessionForm({
             <Icon name="chevronDown" />
           </div>
           {validationError ? <div className="field-error">{validationError}</div> : null}
-        </Field>
-        <Field label="Room subdomain" help="Your guests will use this link to join the session.">
-          <div className="subdomain">
-            <span>{slug || "session-slug"}</span>
-            <b>.remote-tape.io</b>
-            <button className="button icon-only" type="button" aria-label="Copy room subdomain">
-              <Icon name="copy" />
-            </button>
-          </div>
-          <a href={`/join/${slug}`}>https://{slug || "session-slug"}.remote-tape.io/join</a>
-        </Field>
-        <Field
-          label="Host name"
-          help="Display name shown to guests in the session."
-          count="12 / 80"
-        >
-          <input value="Andrew Mason" readOnly />
         </Field>
         <Field
           label="Notes (optional)"

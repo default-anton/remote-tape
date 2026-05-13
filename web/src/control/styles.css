@@ -863,8 +863,7 @@ textarea {
   resize: vertical;
 }
 .input-wrap,
-.selectish,
-.subdomain {
+.selectish {
   align-items: center;
   background: #121a20;
   border: 1px solid var(--line);
@@ -887,18 +886,23 @@ textarea {
   margin-right: 12px;
   pointer-events: none;
 }
-.subdomain span {
-  flex: 1;
-  padding: 9px 12px;
-}
-.subdomain b {
+.domain-preview {
+  align-items: center;
+  background: rgba(97, 211, 255, 0.08);
+  border: 1px solid rgba(97, 211, 255, 0.18);
+  border-radius: 6px;
   color: var(--body);
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 8px 10px;
 }
-.subdomain button {
-  border-radius: 0;
-  border-width: 0 0 0 1px;
-  height: 38px;
-  width: 44px;
+.domain-preview span {
+  color: var(--muted);
+}
+.domain-preview strong {
+  font-weight: 750;
 }
 .ok-line {
   color: var(--green);

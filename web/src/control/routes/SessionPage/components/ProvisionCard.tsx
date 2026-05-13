@@ -15,15 +15,11 @@ export function ProvisionCard({
 }) {
   const items = [
     ["do", "DigitalOcean instance", instanceCopy(options, selection)],
+    ["cf", "Cloudflare DNS", "DNS record for the session server domain derived from your slug."],
     [
-      "cf",
-      "Cloudflare DNS",
-      "DNS record for the-infra-podcast-313.remote-tape.io proxied via Cloudflare.",
-    ],
-    [
-      "link",
-      "Stable Join Links",
-      "Persistent, shareable links for your guests that remain stable across restarts.",
+      "room",
+      "Session room",
+      "Disposable room app, LiveKit/TURN, and recording ingest on the session server.",
     ],
     [
       "sync",
@@ -43,8 +39,8 @@ export function ProvisionCard({
                   ? "digitalOcean"
                   : tone === "cf"
                     ? "cloud"
-                    : tone === "link"
-                      ? "infinity"
+                    : tone === "room"
+                      ? "play"
                       : "refresh"
               }
             />

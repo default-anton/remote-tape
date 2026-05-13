@@ -430,6 +430,20 @@ describe("control app", () => {
     expect(await screen.findByRole("heading", { name: "Recorded Post" })).toBeInTheDocument();
   });
 
+  it("shows the slug-derived session server domain without join-link copy", async () => {
+    renderApp("/sessions/new");
+
+    expect(await screen.findByText("the-infra-podcast-313.remote-tape.io")).toBeInTheDocument();
+    expect(screen.queryByText("Room subdomain")).not.toBeInTheDocument();
+    expect(screen.queryByText(/join links/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Session title"), {
+      target: { value: "Recorded Post" },
+    });
+
+    expect(screen.getByText("recorded-post.remote-tape.io")).toBeInTheDocument();
+  });
+
   it("filters size choices to the selected region", async () => {
     renderApp("/sessions/new");
 
