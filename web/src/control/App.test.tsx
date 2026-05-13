@@ -438,11 +438,23 @@ describe("control app", () => {
     expect(await screen.findByRole("heading", { name: "Recorded Post" })).toBeInTheDocument();
   });
 
+  it("shows empty create-session text inputs with example placeholders", async () => {
+    renderApp("/sessions/new");
+
+    const title = await screen.findByLabelText("Session title");
+    const slug = screen.getByLabelText("Session slug");
+
+    expect(title).toHaveValue("");
+    expect(title).toHaveAttribute("placeholder", "The Infra Podcast #313");
+    expect(slug).toHaveValue("");
+    expect(slug).toHaveAttribute("placeholder", "the-infra-podcast-313");
+    expect(screen.getByText("session-slug.remote-tape.io")).toBeInTheDocument();
+  });
+
   it("shows the slug-derived session server domain without join-link copy", async () => {
     renderApp("/sessions/new");
 
-    expect(await screen.findByText("the-infra-podcast-313.remote-tape.io")).toBeInTheDocument();
-    expect(await screen.findByText("Slug looks available", { exact: false })).toBeInTheDocument();
+    expect(await screen.findByText("Slug is required.")).toBeInTheDocument();
     expect(screen.queryByText("Room subdomain")).not.toBeInTheDocument();
     expect(screen.queryByText(/join links/i)).not.toBeInTheDocument();
 
@@ -451,6 +463,7 @@ describe("control app", () => {
     });
 
     expect(screen.getByText("recorded-post.remote-tape.io")).toBeInTheDocument();
+    expect(await screen.findByText("Slug looks available", { exact: false })).toBeInTheDocument();
   });
 
   it("filters size choices to the selected region", async () => {

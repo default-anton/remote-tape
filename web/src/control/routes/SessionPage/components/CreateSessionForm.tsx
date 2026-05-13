@@ -27,14 +27,14 @@ export function CreateSessionForm({
   onSubmit: (input: CreateSessionInput) => void;
 }) {
   const location = useLocation();
-  const [title, setTitle] = useState("The Infra Podcast #313");
-  const [slug, setSlug] = useState("the-infra-podcast-313");
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
   const [slugDirty, setSlugDirty] = useState(false);
   const [region, setRegion] = useState("");
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const appliedDefaults = useRef(false);
-  const effectiveSlug = slug.trim() || slugify(title);
+  const effectiveSlug = slug.trim() || (title.trim() ? slugify(title) : "");
   const normalizedSlug = effectiveSlug.trim().toLowerCase();
   const slugValidationError = validateSlugInput(normalizedSlug);
   const debouncedSlug = useDebouncedValue(normalizedSlug, 300);
@@ -134,8 +134,9 @@ export function CreateSessionForm({
             id="title"
             value={title}
             onChange={(event) => {
-              setTitle(event.target.value);
-              if (!slugDirty) setSlug(slugify(event.target.value));
+              const nextTitle = event.target.value;
+              setTitle(nextTitle);
+              if (!slugDirty) setSlug(nextTitle.trim() ? slugify(nextTitle) : "");
             }}
             required
             maxLength={100}
