@@ -65,7 +65,10 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 			writeOperationError(w, http.StatusInternalServerError, "list sessions", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"sessions":             sessions,
+			"provisioning_options": provisioningOptionsFor(s.options.DefaultRegion, s.options.DefaultInstanceSize),
+		})
 	case http.MethodPost:
 		var req createSessionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -210,6 +213,9 @@ func (s *Server) createSession(r *http.Request, req createSessionRequest) (sessi
 	if size == "" {
 		size = s.options.DefaultInstanceSize
 	}
+	if err := validateProvisioningSelection(region, size); err != nil {
+		return session.CreateResult{}, err
+	}
 	imageID := strings.TrimSpace(req.ImageID)
 	if imageID == "" {
 		imageID = s.options.ImageID
@@ -248,6 +254,8 @@ func (s *Server) joinURL(slug string, token string) string {
 
 func (s *Server) writeSessionError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errInvalidProvisioningSelection):
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrSlugConflicts):

@@ -21,13 +21,14 @@ import type {
   CreateSessionResponse,
   Detail,
   JoinResponse,
+  ProvisioningOptions,
   Session,
 } from "../types";
 import { joinKeys, sessionsKeys } from "./queryKeys";
 
 const sessionPollIntervalMs = 5_000;
 
-type SessionsResponse = { sessions: Session[] };
+type SessionsResponse = { sessions: Session[]; provisioning_options: ProvisioningOptions };
 
 type CreateSessionOptions = Pick<
   UseMutationOptions<CreateSessionResponse, Error, CreateSessionInput>,

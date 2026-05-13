@@ -36,13 +36,16 @@ type Server struct {
 	auth      *auth.Manager
 }
 
-func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
+func New(db *sql.DB, logger *slog.Logger, options ...Options) (http.Handler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	opts := defaultOptions()
 	if len(options) > 0 {
 		opts = mergeOptions(opts, options[0])
+	}
+	if err := validateProvisioningCatalogDefaults(opts.DefaultRegion, opts.DefaultInstanceSize); err != nil {
+		return nil, err
 	}
 	srv := &Server{
 		db:        db,
@@ -65,15 +68,15 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) http.Handler {
 	mux.HandleFunc("/api/sessions/", srv.apiSession)
 	mux.HandleFunc("/api/join/", srv.apiJoin)
 
-	return requestLogger(logger, securityHeaders(srv.authMiddleware(srv.csrfMiddleware(mux))))
+	return requestLogger(logger, securityHeaders(srv.authMiddleware(srv.csrfMiddleware(mux)))), nil
 }
 
 func defaultOptions() Options {
 	return Options{
 		ControlPlaneURL:     "http://127.0.0.1:8080",
 		SessionsBaseDomain:  "sessions.localhost",
-		DefaultRegion:       "nyc3",
-		DefaultInstanceSize: "s-2vcpu-2gb",
+		DefaultRegion:       defaultProvisioningRegion,
+		DefaultInstanceSize: defaultProvisioningSize,
 		ImageID:             "ubuntu-24-04-x64",
 	}
 }

@@ -103,7 +103,7 @@ function mixedScenario(): ControlScenario {
       slug: "joinable",
       title: "The Infra Podcast #312",
       status: "provisioning",
-      instance_region: "us-east-1",
+      instance_region: "nyc3",
       room_domain: "theinfra.cast.remote-tape.io",
     },
     {
@@ -111,7 +111,7 @@ function mixedScenario(): ControlScenario {
       slug: "product-builders-live",
       title: "Product Builders Live",
       status: "waiting_for_dns",
-      instance_region: "us-west-2",
+      instance_region: "sfo2",
       room_domain: "pblive.cast.remote-tape.io",
     },
     {
@@ -119,7 +119,7 @@ function mixedScenario(): ControlScenario {
       slug: "syntax-fm-recording",
       title: "Syntax.fm – Recording",
       status: "ready",
-      instance_region: "us-east-1",
+      instance_region: "nyc3",
       room_domain: "syntax.cast.remote-tape.io",
     },
     {
@@ -127,7 +127,7 @@ function mixedScenario(): ControlScenario {
       slug: "founders-unplugged",
       title: "Founders Unplugged",
       status: "active",
-      instance_region: "eu-central-1",
+      instance_region: "fra1",
       room_domain: "founders.cast.remote-tape.io",
     },
     {
@@ -135,7 +135,7 @@ function mixedScenario(): ControlScenario {
       slug: "devrel-show",
       title: "The DevRel Show",
       status: "finalizing",
-      instance_region: "us-west-2",
+      instance_region: "sfo2",
       room_domain: "devrel.cast.remote-tape.io",
     },
     {
@@ -143,7 +143,7 @@ function mixedScenario(): ControlScenario {
       slug: "ai-and-coffee",
       title: "AI & Coffee",
       status: "awaiting_manual_download",
-      instance_region: "us-east-1",
+      instance_region: "nyc3",
       room_domain: "aiandcoffee.cast.remote-tape.io",
     },
     {
@@ -151,7 +151,7 @@ function mixedScenario(): ControlScenario {
       slug: "open-source-today",
       title: "Open Source Today",
       status: "teardown_pending",
-      instance_region: "eu-west-1",
+      instance_region: "lon1",
       room_domain: "oss.cast.remote-tape.io",
     },
     {
@@ -159,7 +159,7 @@ function mixedScenario(): ControlScenario {
       slug: "latent-space",
       title: "Latent Space",
       status: "ended",
-      instance_region: "us-west-2",
+      instance_region: "sfo2",
       room_domain: "latent.cast.remote-tape.io",
     },
     {
@@ -167,7 +167,7 @@ function mixedScenario(): ControlScenario {
       slug: "marketing-trends-podcast",
       title: "Marketing Trends Podcast",
       status: "failed",
-      instance_region: "ap-southeast-1",
+      instance_region: "sgp1",
       room_domain: "mktgtrends.cast.remote-tape.io",
     },
     {
@@ -175,7 +175,7 @@ function mixedScenario(): ControlScenario {
       slug: "no-priors",
       title: "No Priors",
       status: "ended",
-      instance_region: "us-east-1",
+      instance_region: "nyc3",
       room_domain: "nopriors.cast.remote-tape.io",
     },
   ];

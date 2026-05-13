@@ -87,7 +87,7 @@ func Load() (Config, error) {
 			LogLevel:           getEnv("REMOTE_TAPE_LOG_LEVEL", "info"),
 		},
 		Provisioning: ProvisioningSettings{
-			DefaultInstanceSize: getEnv("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE", "s-2vcpu-2gb"),
+			DefaultInstanceSize: getEnv("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE", "s-2vcpu-4gb"),
 			DefaultRegion:       getEnv("REMOTE_TAPE_DEFAULT_REGION", "nyc3"),
 			ImageID:             getEnv("REMOTE_TAPE_IMAGE_ID", "ubuntu-24-04-x64"),
 			DigitalOceanSSHKeys: splitCSV(os.Getenv("REMOTE_TAPE_DIGITALOCEAN_SSH_KEYS")),

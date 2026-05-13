@@ -85,15 +85,21 @@ func run(ctx context.Context) int {
 	}
 	defer listener.Close()
 
+	handler, err := server.New(db, logger, server.Options{
+		ControlPlaneURL:     cfg.General.ControlPlaneURL,
+		SessionsBaseDomain:  cfg.General.SessionsBaseDomain,
+		DefaultRegion:       cfg.Provisioning.DefaultRegion,
+		DefaultInstanceSize: cfg.Provisioning.DefaultInstanceSize,
+		ImageID:             cfg.Provisioning.ImageID,
+		Auth:                authManager,
+	})
+	if err != nil {
+		logger.ErrorContext(ctx, "server initialization failed", "error", err)
+		return 1
+	}
+
 	httpServer := &http.Server{
-		Handler: server.New(db, logger, server.Options{
-			ControlPlaneURL:     cfg.General.ControlPlaneURL,
-			SessionsBaseDomain:  cfg.General.SessionsBaseDomain,
-			DefaultRegion:       cfg.Provisioning.DefaultRegion,
-			DefaultInstanceSize: cfg.Provisioning.DefaultInstanceSize,
-			ImageID:             cfg.Provisioning.ImageID,
-			Auth:                authManager,
-		}),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

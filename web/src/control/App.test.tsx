@@ -13,6 +13,7 @@ import {
   makeDetail,
   makeEvent,
   makeJoinResponse,
+  makeProvisioningOptions,
   makeSession,
 } from "./testing/fixtures";
 import { createControlMockApi } from "./testing/handlers";
@@ -62,7 +63,11 @@ describe("control app", () => {
   });
 
   it("renders an empty sessions list with a creation prompt", async () => {
-    server.use(http.get("/api/sessions", () => HttpResponse.json({ sessions: [] })));
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ sessions: [], provisioning_options: makeProvisioningOptions() }),
+      ),
+    );
 
     renderApp("/sessions");
 
@@ -408,20 +413,127 @@ describe("control app", () => {
     );
     renderApp("/sessions/new");
 
+    await screen.findByDisplayValue("s-2vcpu-4gb");
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "Recorded Post" },
     });
     fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
 
     await waitFor(() =>
-      expect(posted).toMatchObject({ title: "Recorded Post", slug: "recorded-post" }),
+      expect(posted).toMatchObject({
+        title: "Recorded Post",
+        slug: "recorded-post",
+        instance_region: "nyc3",
+        instance_size: "s-2vcpu-4gb",
+      }),
     );
     expect(await screen.findByRole("heading", { name: "Recorded Post" })).toBeInTheDocument();
+  });
+
+  it("filters provisioning options and blocks invalid create input", async () => {
+    let postRequests = 0;
+    server.use(
+      http.post("/api/sessions", async () => {
+        postRequests += 1;
+        return HttpResponse.json({ ok: false, error: "unexpected create" }, { status: 500 });
+      }),
+    );
+    renderApp("/sessions/new");
+
+    expect(await screen.findByDisplayValue("nyc3")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("s-2vcpu-4gb")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
+
+    expect(
+      await screen.findByText('Instance size "c-2" is not available in region "nyc3".'),
+    ).toBeInTheDocument();
+    expect(postRequests).toBe(0);
+  });
+
+  it("blocks unsupported typed region and size values", async () => {
+    renderApp("/sessions/new");
+
+    await screen.findByDisplayValue("nyc3");
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "moon1" } });
+    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
+    expect(
+      await screen.findByText(
+        'Unsupported region "moon1". Choose one of the suggested region slugs.',
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "nyc3" } });
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "huge" } });
+    fireEvent.submit(screen.getByRole("button", { name: "+ Create session" }).closest("form")!);
+    expect(
+      await screen.findByText(
+        'Unsupported instance size "huge". Choose one of the suggested size slugs.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("resets unavailable size to the region recommendation", async () => {
+    renderApp("/sessions/new");
+
+    await screen.findByDisplayValue("nyc3");
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
+    expect(screen.getByDisplayValue("c-2")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "nyc3" } });
+    expect(screen.getByDisplayValue("s-2vcpu-4gb")).toBeInTheDocument();
+  });
+
+  it("preserves size while typing a valid region slug", async () => {
+    renderApp("/sessions/new");
+
+    await screen.findByDisplayValue("nyc3");
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "s" } });
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sf" } });
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
+
+    expect(screen.getByDisplayValue("c-2")).toBeInTheDocument();
+  });
+
+  it("describes selected provisioning options from the backend catalog", async () => {
+    renderApp("/sessions/new");
+
+    expect(
+      await screen.findByText(
+        "A shared CPU DigitalOcean droplet in New York 3 (nyc3) sized s-2vcpu-4gb: 2 vCPU / 4 GB / 80 GB — recommended default.",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Preferred region"), { target: { value: "sfo2" } });
+    fireEvent.change(screen.getByLabelText("Instance size"), { target: { value: "c-2" } });
+
+    expect(
+      screen.getByText(
+        "A dedicated CPU DigitalOcean droplet in San Francisco 2 (sfo2) sized c-2: 2 vCPU / 4 GB / 25 GB — recommended production session.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows provisioning option loading failures without enabling create", async () => {
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ ok: false, error: "catalog unavailable" }, { status: 503 }),
+      ),
+    );
+
+    renderApp("/sessions/new");
+
+    expect(
+      await screen.findByText(/Provisioning options failed to load: catalog unavailable/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Create session" })).toBeDisabled();
   });
 
   it("renders one-time join links after creating a session", async () => {
     renderApp("/sessions/new");
 
+    await screen.findByDisplayValue("s-2vcpu-4gb");
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "New Mock Session" },
     });
@@ -446,6 +558,7 @@ describe("control app", () => {
   it("renders duplicate slug validation errors from the server", async () => {
     renderApp("/sessions/new");
 
+    await screen.findByDisplayValue("s-2vcpu-4gb");
     fireEvent.change(await screen.findByLabelText("Session title"), {
       target: { value: "Joinable" },
     });
@@ -484,11 +597,17 @@ describe("control app", () => {
   });
 
   it("centralizes polling decisions around non-terminal session statuses", () => {
-    expect(sessionsListRefetchInterval({ sessions: [makeSession({ status: "failed" })] })).toBe(
-      false,
-    );
     expect(
-      sessionsListRefetchInterval({ sessions: [makeSession({ status: "provisioning" })] }),
+      sessionsListRefetchInterval({
+        sessions: [makeSession({ status: "failed" })],
+        provisioning_options: makeProvisioningOptions(),
+      }),
+    ).toBe(false);
+    expect(
+      sessionsListRefetchInterval({
+        sessions: [makeSession({ status: "provisioning" })],
+        provisioning_options: makeProvisioningOptions(),
+      }),
     ).toBe(5_000);
     expect(
       sessionDetailRefetchInterval({ ...makeDetail(), session: makeSession({ status: "ended" }) }),

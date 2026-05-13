@@ -822,6 +822,11 @@ textarea {
   font-size: 13px;
   margin-top: 6px;
 }
+.field-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 6px;
+}
 .ok-line + .field-count {
   display: inline-block;
   float: right;

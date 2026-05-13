@@ -115,8 +115,33 @@ func TestListSessionsAPIReturnsEmptyArray(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
-	if strings.TrimSpace(response.Body.String()) != `{"sessions":[]}` {
-		t.Fatalf("body = %s", response.Body.String())
+	var body struct {
+		Sessions            []any `json:"sessions"`
+		ProvisioningOptions struct {
+			Defaults struct {
+				Region string `json:"region"`
+				Size   string `json:"size"`
+			} `json:"defaults"`
+			Regions                 []any               `json:"regions"`
+			Sizes                   []any               `json:"sizes"`
+			Availability            map[string][]string `json:"availability"`
+			RecommendedSizeByRegion map[string]string   `json:"recommended_size_by_region"`
+		} `json:"provisioning_options"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Sessions) != 0 {
+		t.Fatalf("sessions = %+v", body.Sessions)
+	}
+	if body.ProvisioningOptions.Defaults.Region != "nyc3" || body.ProvisioningOptions.Defaults.Size != "s-2vcpu-4gb" {
+		t.Fatalf("defaults = %+v", body.ProvisioningOptions.Defaults)
+	}
+	if len(body.ProvisioningOptions.Regions) == 0 || len(body.ProvisioningOptions.Sizes) == 0 || len(body.ProvisioningOptions.Availability["nyc3"]) == 0 {
+		t.Fatalf("provisioning_options = %+v", body.ProvisioningOptions)
+	}
+	if body.ProvisioningOptions.RecommendedSizeByRegion["nyc3"] != "s-2vcpu-4gb" {
+		t.Fatalf("recommended_size_by_region = %+v", body.ProvisioningOptions.RecommendedSizeByRegion)
 	}
 }
 
@@ -206,6 +231,93 @@ func TestCreateAndGetSessionAPI(t *testing.T) {
 	}
 	if strings.Contains(get.Body.String(), created.Tokens["host"].Token) || strings.Contains(get.Body.String(), created.Tokens["guest"].Token) {
 		t.Fatalf("GET response leaked raw join token: %s", get.Body.String())
+	}
+}
+
+func TestCreateSessionProvisioningValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "valid explicit region and size",
+			body:       `{"title":"Valid","slug":"valid","instance_region":"sfo2","instance_size":"c-2"}`,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "omitted values use defaults",
+			body:       `{"title":"Defaults","slug":"defaults"}`,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "invalid region",
+			body:       `{"title":"Invalid Region","slug":"invalid-region","instance_region":"abc","instance_size":"s-2vcpu-4gb"}`,
+			wantStatus: http.StatusBadRequest,
+			wantError:  `unsupported instance region "abc"; choose one of:`,
+		},
+		{
+			name:       "invalid size",
+			body:       `{"title":"Invalid Size","slug":"invalid-size","instance_region":"nyc3","instance_size":"x"}`,
+			wantStatus: http.StatusBadRequest,
+			wantError:  `unsupported instance size "x"; choose one of:`,
+		},
+		{
+			name:       "size unavailable in region",
+			body:       `{"title":"Unavailable","slug":"unavailable","instance_region":"nyc3","instance_size":"c-2"}`,
+			wantStatus: http.StatusBadRequest,
+			wantError:  `instance size "c-2" is not available in region "nyc3"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, db := newTestHandler(t)
+			defer db.Close()
+			cookies, csrf := loginTestAdmin(t, handler)
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewBufferString(tt.body))
+			addCookies(request, cookies)
+			request.Header.Set("X-CSRF-Token", csrf)
+			handler.ServeHTTP(response, request)
+
+			if response.Code != tt.wantStatus {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+			if tt.wantError != "" {
+				var body struct {
+					Error string `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatalf("decode error response: %v", err)
+				}
+				if !strings.Contains(body.Error, tt.wantError) {
+					t.Fatalf("error = %q; want %q", body.Error, tt.wantError)
+				}
+			}
+		})
+	}
+}
+
+func TestNewRejectsInvalidConfiguredProvisioningDefaults(t *testing.T) {
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "control-plane.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	_, err = New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		Auth:                newTestAuth(t),
+		DefaultRegion:       "nyc3",
+		DefaultInstanceSize: "c-2",
+	})
+	if err == nil {
+		t.Fatal("New() error = nil")
+	}
+	if !strings.Contains(err.Error(), `instance size "c-2" is not available in region "nyc3"`) {
+		t.Fatalf("New() error = %v", err)
 	}
 }
 
@@ -575,7 +687,12 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t)}), db
+	handler, err := New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t)})
+	if err != nil {
+		db.Close()
+		t.Fatalf("New() error = %v", err)
+	}
+	return handler, db
 }
 
 func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.Handler, *sql.DB) {
@@ -589,7 +706,12 @@ func newTestHandlerWithControlDist(t *testing.T, files map[string]string) (http.
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	return New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: testFS(files)}), db
+	handler, err := New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t), controlUIFS: testFS(files)})
+	if err != nil {
+		db.Close()
+		t.Fatalf("New() error = %v", err)
+	}
+	return handler, db
 }
 
 func testFS(files map[string]string) fs.FS {

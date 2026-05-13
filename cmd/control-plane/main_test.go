@@ -21,6 +21,16 @@ func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
 	}
 }
 
+func TestRunReturnsFailureForInvalidProvisioningDefaults(t *testing.T) {
+	setRunTestEnv(t, "127.0.0.1:0", filepath.Join(t.TempDir(), "control-plane.db"))
+	t.Setenv("REMOTE_TAPE_DEFAULT_REGION", "nyc3")
+	t.Setenv("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE", "c-2")
+
+	if code := run(context.Background()); code != 1 {
+		t.Fatalf("run() exit code = %d, want 1", code)
+	}
+}
+
 func setRunTestEnv(t *testing.T, httpAddr string, databasePath string) {
 	t.Helper()
 	for _, name := range []string{

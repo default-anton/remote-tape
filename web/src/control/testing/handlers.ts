@@ -1,5 +1,10 @@
 import { HttpResponse, http, type HttpHandler } from "msw";
-import { makeCreateSessionResponse, makeJoinResponse, makeSession } from "./fixtures";
+import {
+  makeCreateSessionResponse,
+  makeJoinResponse,
+  makeProvisioningOptions,
+  makeSession,
+} from "./fixtures";
 import { detailForSession, scenario, validGuestToken, validHostToken } from "./scenarios";
 import type { CreateSessionInput, JoinResponse, Session } from "../types";
 
@@ -44,7 +49,10 @@ export function createControlMockApi(): ControlMockApi {
       return new HttpResponse(null, { status: 204 });
     }),
     http.get("/api/sessions", ({ request }) => {
-      return HttpResponse.json({ sessions: sessionsFor(request) });
+      return HttpResponse.json({
+        sessions: sessionsFor(request),
+        provisioning_options: makeProvisioningOptions(),
+      });
     }),
     http.get("/api/sessions/:id", ({ params, request }) => {
       const id = String(params.id ?? "");
@@ -64,12 +72,13 @@ export function createControlMockApi(): ControlMockApi {
           { status: 409 },
         );
       }
+      const provisioningOptions = makeProvisioningOptions();
       const session = makeSession({
         id: `sess_${slug.replaceAll("-", "_")}`,
         slug,
         title,
-        instance_region: input.instance_region?.trim() || "nyc3",
-        instance_size: input.instance_size?.trim() || "s-2vcpu-2gb",
+        instance_region: input.instance_region?.trim() || provisioningOptions.defaults.region,
+        instance_size: input.instance_size?.trim() || provisioningOptions.defaults.size,
       });
       const created = {
         session,

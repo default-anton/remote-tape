@@ -4,11 +4,56 @@ import type {
   Detail,
   Event,
   JoinResponse,
+  ProvisioningOptions,
   Session,
 } from "../types";
 
 const timestamp = "2026-04-25T10:00:00.000000000Z";
 const defaultControlPlaneURL = "http://127.0.0.1:5173";
+
+export function makeProvisioningOptions(
+  overrides: Partial<ProvisioningOptions> = {},
+): ProvisioningOptions {
+  return {
+    defaults: { region: "nyc3", size: "s-2vcpu-4gb" },
+    regions: [
+      { slug: "nyc3", label: "New York 3" },
+      { slug: "sfo2", label: "San Francisco 2" },
+    ],
+    sizes: [
+      {
+        slug: "s-2vcpu-2gb",
+        label: "Shared CPU Basic",
+        description: "2 vCPU / 2 GB / 60 GB — low-cost small session",
+        recommended: false,
+        dedicated_cpu: false,
+      },
+      {
+        slug: "s-2vcpu-4gb",
+        label: "Shared CPU Basic",
+        description: "2 vCPU / 4 GB / 80 GB — recommended default",
+        recommended: true,
+        dedicated_cpu: false,
+      },
+      {
+        slug: "c-2",
+        label: "Dedicated CPU CPU-Optimized",
+        description: "2 vCPU / 4 GB / 25 GB — recommended production session",
+        recommended: true,
+        dedicated_cpu: true,
+      },
+    ],
+    availability: {
+      nyc3: ["s-2vcpu-2gb", "s-2vcpu-4gb"],
+      sfo2: ["s-2vcpu-2gb", "s-2vcpu-4gb", "c-2"],
+    },
+    recommended_size_by_region: {
+      nyc3: "s-2vcpu-4gb",
+      sfo2: "s-2vcpu-4gb",
+    },
+    ...overrides,
+  };
+}
 
 export function makeSession(overrides: Partial<Session> = {}): Session {
   const id = overrides.id ?? `sess_${overrides.status ?? "created"}`;
@@ -23,7 +68,7 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     instance_id: null,
     public_ip: null,
     instance_region: "nyc3",
-    instance_size: "s-2vcpu-2gb",
+    instance_size: "s-2vcpu-4gb",
     image_id: "ubuntu-24-04-x64",
     room_domain: mockRoomDomain(id),
     dns_record_id: null,

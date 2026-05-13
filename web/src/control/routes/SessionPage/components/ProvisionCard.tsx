@@ -1,12 +1,20 @@
+import type { ProvisioningOptions } from "../../../types";
 import { Icon } from "../../../components/Icon";
 
-export function ProvisionCard() {
+export type ProvisioningSelection = {
+  region: string;
+  size: string;
+};
+
+export function ProvisionCard({
+  options,
+  selection,
+}: {
+  options: ProvisioningOptions | undefined;
+  selection: ProvisioningSelection;
+}) {
   const items = [
-    [
-      "do",
-      "DigitalOcean instance",
-      "A dedicated instance in US East 1 (New York) sized 2 vCPU / 4 GB RAM.",
-    ],
+    ["do", "DigitalOcean instance", instanceCopy(options, selection)],
     [
       "cf",
       "Cloudflare DNS",
@@ -52,4 +60,15 @@ export function ProvisionCard() {
       </div>
     </aside>
   );
+}
+
+function instanceCopy(options: ProvisioningOptions | undefined, selection: ProvisioningSelection) {
+  if (!options) return "A per-session DigitalOcean droplet using the selected region and size.";
+
+  const region = options.regions.find((candidate) => candidate.slug === selection.region);
+  const size = options.sizes.find((candidate) => candidate.slug === selection.size);
+  if (!region || !size) return "A per-session DigitalOcean droplet using valid catalog options.";
+
+  const cpuClass = size.dedicated_cpu ? "dedicated CPU" : "shared CPU";
+  return `A ${cpuClass} DigitalOcean droplet in ${region.label} (${region.slug}) sized ${size.slug}: ${size.description}.`;
 }

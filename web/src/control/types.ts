@@ -63,8 +63,33 @@ export const DetailSchema = z.object({
   events: z.array(EventSchema),
 });
 
+export const ProvisioningOptionsSchema = z.object({
+  defaults: z.object({
+    region: z.string(),
+    size: z.string(),
+  }),
+  regions: z.array(
+    z.object({
+      slug: z.string(),
+      label: z.string(),
+    }),
+  ),
+  sizes: z.array(
+    z.object({
+      slug: z.string(),
+      label: z.string(),
+      description: z.string(),
+      recommended: z.boolean(),
+      dedicated_cpu: z.boolean(),
+    }),
+  ),
+  availability: z.record(z.string(), z.array(z.string())),
+  recommended_size_by_region: z.record(z.string(), z.string()),
+});
+
 export const SessionsResponseSchema = z.object({
   sessions: z.array(SessionSchema),
+  provisioning_options: ProvisioningOptionsSchema,
 });
 
 export const JoinLinkSchema = z.object({
@@ -108,6 +133,7 @@ export const JoinResponseSchema = z.object({
 });
 
 export type Session = z.infer<typeof SessionSchema>;
+export type ProvisioningOptions = z.infer<typeof ProvisioningOptionsSchema>;
 export type AccessToken = z.infer<typeof AccessTokenSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type Detail = z.infer<typeof DetailSchema>;

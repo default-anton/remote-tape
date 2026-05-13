@@ -120,7 +120,7 @@ func validConfig() Config {
 			LogLevel:           "info",
 		},
 		Provisioning: ProvisioningSettings{
-			DefaultInstanceSize: "s-2vcpu-2gb",
+			DefaultInstanceSize: "s-2vcpu-4gb",
 			DefaultRegion:       "nyc3",
 			ImageID:             "ubuntu-24-04-x64",
 			DigitalOceanSSHKeys: []string{"12345"},

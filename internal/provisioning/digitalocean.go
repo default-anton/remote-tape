@@ -83,16 +83,18 @@ func (p *DigitalOceanInstanceProvider) ensureDroplet(ctx context.Context, s sess
 		return InstanceResult{ID: strconv.Itoa(d.ID), IP: publicIPv4(d), Adopted: true}, nil
 	}
 
+	region := strings.TrimSpace(s.InstanceRegion)
+	size := strings.TrimSpace(s.InstanceSize)
 	droplet, _, err := p.client.Droplets.Create(ctx, &godo.DropletCreateRequest{
 		Name:    dropletName(s.Slug),
-		Region:  strings.TrimSpace(s.InstanceRegion),
-		Size:    strings.TrimSpace(s.InstanceSize),
+		Region:  region,
+		Size:    size,
 		Image:   createImage(s.ImageID),
 		Tags:    []string{baseTag, sessionTag},
 		SSHKeys: p.sshKeys,
 	})
 	if err != nil {
-		return InstanceResult{}, fmt.Errorf("create digitalocean droplet for session %s: %w", s.ID, err)
+		return InstanceResult{}, fmt.Errorf("create digitalocean droplet for session %s in region %q with size %q: %w", s.ID, region, size, err)
 	}
 	return InstanceResult{ID: strconv.Itoa(droplet.ID), IP: publicIPv4(*droplet)}, nil
 }

@@ -1,12 +1,21 @@
+import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { useCreateSession } from "../../api/hooks";
+import { useCreateSession, useSessions } from "../../api/hooks";
 import { Shell } from "../../components/Shell";
 import { CreateSessionForm } from "./components/CreateSessionForm";
-import { ProvisionCard } from "./components/ProvisionCard";
+import { ProvisionCard, type ProvisioningSelection } from "./components/ProvisionCard";
 
 export function CreateSessionPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const sessions = useSessions();
+  const [provisioningSelection, setProvisioningSelection] = useState<ProvisioningSelection>({
+    region: "",
+    size: "",
+  });
+  const updateProvisioningSelection = useCallback((selection: ProvisioningSelection) => {
+    setProvisioningSelection(selection);
+  }, []);
   const create = useCreateSession({
     onSuccess: (created) => {
       navigate(
@@ -31,9 +40,16 @@ export function CreateSessionPage() {
         <CreateSessionForm
           busy={create.isPending}
           error={create.error}
+          options={sessions.data?.provisioning_options}
+          optionsError={sessions.error}
+          optionsLoading={sessions.isLoading}
+          onProvisioningSelectionChange={updateProvisioningSelection}
           onSubmit={(input) => create.mutate(input)}
         />
-        <ProvisionCard />
+        <ProvisionCard
+          options={sessions.data?.provisioning_options}
+          selection={provisioningSelection}
+        />
       </div>
     </Shell>
   );
