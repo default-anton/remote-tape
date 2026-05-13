@@ -23,7 +23,7 @@ export function Toolbar() {
 
 function FakeSelect({ label, value }: { label: string; value: string }) {
   return (
-    <button type="button" className="fake-select">
+    <button type="button" className="button ghost fake-select">
       <span>{label}</span>
       {value}
       <b>

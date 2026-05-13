@@ -64,11 +64,15 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           </p>
         </div>
         <div className="detail-actions">
-          <button className="danger" type="button">
+          <button className="button danger" type="button">
             ⦿ End session
           </button>
           {canForceDestroy ? (
-            <button className="danger" type="button" onClick={() => setForceDestroyOpen(true)}>
+            <button
+              className="button danger"
+              type="button"
+              onClick={() => setForceDestroyOpen(true)}
+            >
               Force destroy session server
             </button>
           ) : null}
@@ -147,7 +151,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
               Cancel
             </button>
             <button
-              className="danger"
+              className="button danger"
               type="button"
               disabled={confirmation !== expectedConfirmation || forceDestroy.isPending}
               onClick={() => forceDestroy.mutate({ id: session.id, confirmation })}
@@ -341,7 +345,9 @@ function LinkLine({ label, url }: { label: string; url: string }) {
     <div>
       <span>{label}</span>
       <code>{url}</code>
-      <button type="button">□ Copy</button>
+      <button className="button ghost" type="button">
+        □ Copy
+      </button>
     </div>
   );
 }
@@ -388,7 +394,9 @@ function EventsCard({ events }: { events: Event[] }) {
     <section className="panel events-card">
       <div className="section-head">
         <h2>Session events</h2>
-        <button type="button">⇩ Download</button>
+        <button className="button ghost" type="button">
+          ⇩ Download
+        </button>
       </div>
       {events.length === 0 ? (
         <p className="muted">No session events recorded yet.</p>
@@ -406,7 +414,7 @@ function EventsCard({ events }: { events: Event[] }) {
         </ul>
       )}
       {events.length > 10 ? (
-        <button className="load-more" type="button">
+        <button className="button ghost load-more" type="button">
           Load more events ↓
         </button>
       ) : null}

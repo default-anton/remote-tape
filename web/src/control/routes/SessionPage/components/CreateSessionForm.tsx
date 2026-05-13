@@ -188,7 +188,7 @@ export function CreateSessionForm({
           <div className="subdomain">
             <span>{slug || "session-slug"}</span>
             <b>.remote-tape.io</b>
-            <button type="button" aria-label="Copy room subdomain">
+            <button className="button icon-only" type="button" aria-label="Copy room subdomain">
               <Icon name="copy" />
             </button>
           </div>
@@ -208,7 +208,7 @@ export function CreateSessionForm({
         >
           <textarea placeholder="e.g. episode topic, guests, recording plan…" />
         </Field>
-        <button type="button" className="advanced">
+        <button type="button" className="button ghost advanced">
           Advanced options <Icon name="chevronRight" />
           <small>Tags, data retention, recording settings, and more.</small>
         </button>
@@ -217,7 +217,12 @@ export function CreateSessionForm({
         <Link className="button ghost" to={{ pathname: "/sessions", search: location.search }}>
           Cancel
         </Link>
-        <button className="primary" type="submit" disabled={disabled} aria-label="+ Create session">
+        <button
+          className="button primary"
+          type="submit"
+          disabled={disabled}
+          aria-label="+ Create session"
+        >
           {busy ? (
             "Creating…"
           ) : (

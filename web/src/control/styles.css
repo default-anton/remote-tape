@@ -51,9 +51,10 @@ a:hover {
 button,
 .button {
   align-items: center;
+  background: #172027;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #172027;
+  box-shadow: none;
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
@@ -61,11 +62,57 @@ button,
   gap: 9px;
   justify-content: center;
   padding: 11px 15px;
+  text-decoration: none;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
 }
-
-button:disabled {
+.button,
+.button:hover {
+  text-decoration: none;
+}
+button:hover,
+.button:hover {
+  background: #202a32;
+  border-color: #4a5661;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 14%);
+  transform: translateY(-1px);
+}
+button:active,
+.button:active {
+  box-shadow: none;
+  transform: translateY(1px);
+}
+button:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+button:disabled,
+button[aria-disabled="true"],
+.button[aria-disabled="true"] {
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+button:disabled:hover,
+button[aria-disabled="true"]:hover,
+.button[aria-disabled="true"]:hover {
+  background: #172027;
+  border-color: var(--line);
+  box-shadow: none;
+  transform: none;
+}
+button[aria-busy="true"],
+.button[aria-busy="true"],
+button.is-loading,
+.button.is-loading {
   cursor: wait;
-  opacity: 0.65;
 }
 .icon {
   display: inline-block;
@@ -83,18 +130,53 @@ button.ghost,
   background: #151d24;
   color: var(--body);
 }
+button.ghost:hover,
+.button.ghost:hover {
+  background: #202a32;
+  border-color: #52606c;
+}
 .primary {
   background: var(--accent);
   border-color: #f1c98f;
   color: #1c1510;
+}
+.primary:hover {
+  background: #efc88f;
+  border-color: var(--accent-2);
+  box-shadow: 0 10px 26px rgb(244 163 64 / 16%);
 }
 .danger {
   background: #281d1d;
   border-color: #a13c39;
   color: #ff6969;
 }
+.danger:hover {
+  background: #3a2020;
+  border-color: var(--red);
+}
+.primary:disabled:hover,
+.primary[aria-disabled="true"]:hover {
+  background: var(--accent);
+  border-color: #f1c98f;
+}
+.ghost:disabled:hover,
+.ghost[aria-disabled="true"]:hover {
+  background: #151d24;
+  border-color: var(--line);
+}
+.danger:disabled:hover,
+.danger[aria-disabled="true"]:hover {
+  background: #281d1d;
+  border-color: #a13c39;
+}
 .icon-only {
+  min-width: 0;
+  padding: 0;
   width: 52px;
+}
+.icon-only:hover {
+  background: #202a32;
+  border-color: #52606c;
 }
 .plus {
   font-size: 20px;
@@ -491,6 +573,10 @@ kbd {
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
+}
+.fake-select:hover {
+  background: #202a32;
+  border-color: #52606c;
 }
 .table-wrap {
   background: linear-gradient(180deg, var(--panel), #162027);

@@ -60,10 +60,10 @@ export function SessionTable({ sessions }: { sessions: Session[] }) {
               </td>
               <td>
                 <div className="actions">
-                  <button type="button">
+                  <button className="button icon-only" type="button">
                     <Icon name={actionIcon(session.status)} />
                   </button>
-                  <button type="button">
+                  <button className="button icon-only" type="button">
                     <Icon name="more" />
                   </button>
                 </div>
@@ -77,19 +77,23 @@ export function SessionTable({ sessions }: { sessions: Session[] }) {
           Showing 1–{Math.min(10, sessions.length)} of {Math.max(24, sessions.length)} sessions
         </span>
         <div>
-          <button type="button">
+          <button className="button ghost icon-only" type="button">
             <Icon name="chevronLeft" />
           </button>
-          <button className="current" type="button">
+          <button className="button ghost current" type="button">
             1
           </button>
-          <button type="button">2</button>
-          <button type="button">3</button>
-          <button type="button">
+          <button className="button ghost" type="button">
+            2
+          </button>
+          <button className="button ghost" type="button">
+            3
+          </button>
+          <button className="button ghost icon-only" type="button">
             <Icon name="chevronRight" />
           </button>
         </div>
-        <button type="button">
+        <button className="button ghost" type="button">
           10 per page <Icon name="chevronDown" />
         </button>
       </div>

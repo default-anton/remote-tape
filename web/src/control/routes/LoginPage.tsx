@@ -69,7 +69,11 @@ export function LoginPage() {
             />
           </label>
           {login.error ? <p role="alert">{login.error.message}</p> : null}
-          <button className="primary" disabled={login.isPending || auth.isLoading} type="submit">
+          <button
+            className="button primary"
+            disabled={login.isPending || auth.isLoading}
+            type="submit"
+          >
             {login.isPending ? "Signing in…" : "Sign in →"}
           </button>
         </form>
