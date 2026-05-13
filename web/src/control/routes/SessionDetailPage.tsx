@@ -429,7 +429,6 @@ function EventsCard({ events }: { events: Event[] }) {
             <li key={event.id}>
               <time>{formatTime(event.created_at)}</time>
               <span className="event-line" />
-              <b>{event.type}</b>
               <p>{value(event.message)}</p>
               <time>{formatDate(event.created_at)}</time>
             </li>

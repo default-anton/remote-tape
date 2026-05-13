@@ -243,17 +243,12 @@ describe("control app", () => {
     renderApp("/sessions/sess_detail");
 
     expect(await screen.findByRole("heading", { name: "Detail" })).toBeInTheDocument();
-    const eventTypes = screen
-      .getAllByText(
-        /^(session\.created|instance\.create\.started|dns\.create\.succeeded|session\.ready)$/,
-      )
+    const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
+    const eventMessages = within(eventsCard)
+      .getAllByText(/^(Created|Creating instance|DNS ready|Ready)$/)
       .map((item) => item.textContent);
-    expect(eventTypes).toEqual([
-      "session.created",
-      "instance.create.started",
-      "dns.create.succeeded",
-      "session.ready",
-    ]);
+    expect(eventMessages).toEqual(["Created", "Creating instance", "DNS ready", "Ready"]);
+    expect(within(eventsCard).queryByText("session.created")).not.toBeInTheDocument();
     expect(screen.getByText("host")).toBeInTheDocument();
     expect(screen.getByText("guest")).toBeInTheDocument();
     expect(screen.getByText("Host link · active")).toBeInTheDocument();
@@ -283,7 +278,9 @@ describe("control app", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Host join link")).not.toBeInTheDocument();
     expect(screen.queryByText("Guest join link")).not.toBeInTheDocument();
-    expect(screen.getByText("session.created")).toBeInTheDocument();
+    const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
+    expect(within(eventsCard).getByText("Created")).toBeInTheDocument();
+    expect(within(eventsCard).queryByText("session.created")).not.toBeInTheDocument();
     expect(screen.queryByText("instance.create.succeeded")).not.toBeInTheDocument();
     expect(screen.queryByText("session.ready")).not.toBeInTheDocument();
     expect(screen.queryByText("heartbeat")).not.toBeInTheDocument();
@@ -303,8 +300,11 @@ describe("control app", () => {
       await screen.findByText("DigitalOcean create instance request failed: rate limited"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("provisioning").length).toBeGreaterThan(0);
-    expect(screen.getByText("provisioning.started")).toBeInTheDocument();
-    expect(screen.getByText("provisioning.failed")).toBeInTheDocument();
+    const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
+    expect(within(eventsCard).getByText("Provisioning started")).toBeInTheDocument();
+    expect(within(eventsCard).getByText("Provisioning failed")).toBeInTheDocument();
+    expect(within(eventsCard).queryByText("provisioning.started")).not.toBeInTheDocument();
+    expect(within(eventsCard).queryByText("provisioning.failed")).not.toBeInTheDocument();
     expect(screen.getByText("Provision attempts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Room not ready" })).toBeDisabled();
     expect(screen.getByText("Room server")).toBeInTheDocument();

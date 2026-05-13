@@ -156,13 +156,12 @@ code {
   align-items: center;
   display: grid;
   gap: 14px;
-  grid-template-columns: 82px 14px minmax(150px, 180px) minmax(0, 1fr) 104px;
+  grid-template-columns: 82px 14px minmax(0, 1fr) 104px;
   min-height: 28px;
 }
 .events-card time {
   color: var(--muted);
 }
-.events-card b,
 .events-card p,
 .events-card time {
   min-width: 0;
