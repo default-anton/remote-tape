@@ -101,8 +101,8 @@ export type ListSessionsParams = {
   pageSize?: number;
   sort?: string;
   direction?: "asc" | "desc";
-  status?: string;
-  region?: string;
+  statuses?: string[];
+  regions?: string[];
   query?: string;
 };
 
@@ -112,11 +112,21 @@ export function listSessions(params: ListSessionsParams = {}) {
   if (params.pageSize) query.set("page_size", String(params.pageSize));
   if (params.sort) query.set("sort", params.sort);
   if (params.direction) query.set("direction", params.direction);
-  if (params.status) query.set("status", params.status);
-  if (params.region) query.set("region", params.region);
+  appendParams(query, "status", params.statuses);
+  appendParams(query, "region", params.regions);
   if (params.query) query.set("q", params.query);
   const suffix = query.size > 0 ? `?${query}` : "";
   return requestJSON(`/api/sessions${suffix}`, SessionsResponseSchema);
+}
+
+function appendParams(query: URLSearchParams, key: string, values: string[] | undefined) {
+  const seen = new Set<string>();
+  for (const value of values ?? []) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    query.append(key, trimmed);
+  }
 }
 
 export function getSession(id: string) {

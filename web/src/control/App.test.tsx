@@ -74,13 +74,17 @@ describe("control app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sort by Session" }));
     await waitFor(() => expect(newSessionHref()).toContain("sort=title"));
 
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "ready" } });
+    fireEvent.click(screen.getByRole("button", { name: "Status All statuses" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Ready" }));
     await waitFor(() => expect(newSessionHref()).toContain("status=ready"));
+    expect(screen.getByRole("button", { name: "Status Ready" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "Ready Session 7" })).toBeInTheDocument();
     expect(screen.queryByText("active")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Region"), { target: { value: "nyc3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Region All regions" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "New York 3" }));
     await waitFor(() => expect(newSessionHref()).toContain("region=nyc3"));
+    expect(screen.getByRole("button", { name: "Region New York 3" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Search sessions"), { target: { value: "ready" } });
     await waitFor(() => expect(newSessionHref()).toContain("q=ready"));

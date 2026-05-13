@@ -131,8 +131,8 @@ type ListSessionsInput struct {
 	PageSize  int
 	Sort      string
 	Direction string
-	Status    string
-	Region    string
+	Statuses  []string
+	Regions   []string
 	Query     string
 }
 
@@ -405,22 +405,40 @@ func normalizeListSessionsInput(input ListSessionsInput) ListSessionsInput {
 	if input.Direction != "asc" {
 		input.Direction = "desc"
 	}
-	input.Status = strings.TrimSpace(input.Status)
-	input.Region = strings.TrimSpace(input.Region)
+	input.Statuses = normalizeListFilterValues(input.Statuses)
+	input.Regions = normalizeListFilterValues(input.Regions)
 	input.Query = strings.TrimSpace(input.Query)
 	return input
+}
+
+func normalizeListFilterValues(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		filtered = append(filtered, value)
+	}
+	return filtered
 }
 
 func listSessionsWhere(input ListSessionsInput) (string, []any) {
 	clauses := make([]string, 0, 3)
 	args := make([]any, 0, 3)
-	if input.Status != "" {
-		clauses = append(clauses, "status = ?")
-		args = append(args, input.Status)
+	if len(input.Statuses) > 0 {
+		clauses = append(clauses, "status in ("+sqlPlaceholders(len(input.Statuses))+")")
+		for _, status := range input.Statuses {
+			args = append(args, status)
+		}
 	}
-	if input.Region != "" {
-		clauses = append(clauses, "instance_region = ?")
-		args = append(args, input.Region)
+	if len(input.Regions) > 0 {
+		clauses = append(clauses, "instance_region in ("+sqlPlaceholders(len(input.Regions))+")")
+		for _, region := range input.Regions {
+			args = append(args, region)
+		}
 	}
 	if input.Query != "" {
 		like := "%" + escapeSQLiteLike(strings.ToLower(input.Query)) + "%"
@@ -435,6 +453,10 @@ func listSessionsWhere(input ListSessionsInput) (string, []any) {
 
 func escapeSQLiteLike(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+func sqlPlaceholders(count int) string {
+	return strings.TrimRight(strings.Repeat("?,", count), ",")
 }
 
 func listSessionsOrder(input ListSessionsInput) string {

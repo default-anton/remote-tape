@@ -22,8 +22,8 @@ export function SessionsPage() {
     pageSize: tableState.pageSize,
     sort: tableState.sort,
     direction: tableState.direction,
-    status: tableState.status,
-    region: tableState.region,
+    statuses: tableState.statuses,
+    regions: tableState.regions,
     query: tableState.query,
   });
   const rows = sessions.data?.sessions ?? [];
@@ -32,7 +32,7 @@ export function SessionsPage() {
     setSearchParams(paramsFromTableState({ ...tableState, ...next }, searchParams));
   }
 
-  function setFilter(next: Partial<Pick<TableState, "query" | "region" | "status">>) {
+  function setFilter(next: Partial<Pick<TableState, "query" | "regions" | "statuses">>) {
     updateTable({ ...next, page: 1 });
   }
 
@@ -61,8 +61,8 @@ export function SessionsPage() {
         <Toolbar
           filters={sessions.data?.filters}
           query={tableState.query}
-          region={tableState.region}
-          status={tableState.status}
+          regions={tableState.regions}
+          statuses={tableState.statuses}
           onChange={setFilter}
         />
         {sessions.isLoading ? (
@@ -96,8 +96,8 @@ type TableState = {
   pageSize: number;
   sort: SessionSort;
   direction: "asc" | "desc";
-  status: string;
-  region: string;
+  statuses: string[];
+  regions: string[];
   query: string;
 };
 
@@ -107,8 +107,8 @@ function tableStateFromParams(params: URLSearchParams): TableState {
     pageSize: positiveInt(params.get("page_size"), defaultPageSize),
     sort: sessionSort(params.get("sort")),
     direction: params.get("direction") === "asc" ? "asc" : defaultDirection,
-    status: params.get("status") ?? "",
-    region: params.get("region") ?? "",
+    statuses: normalizeFilterValues(params.getAll("status")),
+    regions: normalizeFilterValues(params.getAll("region")),
     query: params.get("q") ?? "",
   };
 }
@@ -119,8 +119,8 @@ function paramsFromTableState(state: TableState, current: URLSearchParams) {
   setParam(next, "page_size", state.pageSize === defaultPageSize ? "" : String(state.pageSize));
   setParam(next, "sort", state.sort === defaultSort ? "" : state.sort);
   setParam(next, "direction", state.direction === defaultDirection ? "" : state.direction);
-  setParam(next, "status", state.status);
-  setParam(next, "region", state.region);
+  setParams(next, "status", state.statuses);
+  setParams(next, "region", state.regions);
   setParam(next, "q", state.query.trim());
   return next;
 }
@@ -145,7 +145,7 @@ function sessionSort(value: string | null): SessionSort {
 }
 
 function hasActiveFilters(state: TableState) {
-  return Boolean(state.query.trim() || state.status || state.region);
+  return Boolean(state.query.trim() || state.statuses.length > 0 || state.regions.length > 0);
 }
 
 function setParam(params: URLSearchParams, key: string, value: string) {
@@ -154,4 +154,23 @@ function setParam(params: URLSearchParams, key: string, value: string) {
   } else {
     params.delete(key);
   }
+}
+
+function setParams(params: URLSearchParams, key: string, values: string[]) {
+  params.delete(key);
+  for (const value of normalizeFilterValues(values)) {
+    params.append(key, value);
+  }
+}
+
+function normalizeFilterValues(values: string[]) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
 }

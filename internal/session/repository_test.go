@@ -125,7 +125,7 @@ values (?, ?, ?, ?, ?, 's-2vcpu-4gb', 'image', ?, ?);
 		}
 	}
 
-	result, err := repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 1, Sort: "title", Direction: "desc", Status: "ready"})
+	result, err := repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 1, Sort: "title", Direction: "desc", Statuses: []string{"ready"}})
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
@@ -136,7 +136,7 @@ values (?, ?, ?, ?, ?, 's-2vcpu-4gb', 'image', ?, ?);
 		t.Fatalf("sessions = %+v", result.Sessions)
 	}
 
-	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 99, PageSize: 1, Sort: "title", Direction: "desc", Status: "ready"})
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 99, PageSize: 1, Sort: "title", Direction: "desc", Statuses: []string{"ready"}})
 	if err != nil {
 		t.Fatalf("ListSessions() clamped page error = %v", err)
 	}
@@ -144,12 +144,20 @@ values (?, ?, ?, ?, ?, 's-2vcpu-4gb', 'image', ?, ?);
 		t.Fatalf("clamped result = %+v", result)
 	}
 
-	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Region: "sfo2", Query: "bet"})
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Regions: []string{"sfo2"}, Query: "bet"})
 	if err != nil {
 		t.Fatalf("ListSessions() region query error = %v", err)
 	}
 	if result.Total != 1 || len(result.Sessions) != 1 || result.Sessions[0].Slug != "beta" {
 		t.Fatalf("filtered result = %+v", result)
+	}
+
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Statuses: []string{"ready", "active"}, Regions: []string{"nyc3", "sfo2"}})
+	if err != nil {
+		t.Fatalf("ListSessions() multi-filter error = %v", err)
+	}
+	if result.Total != 3 || len(result.Sessions) != 3 {
+		t.Fatalf("multi-filter result = %+v", result)
 	}
 
 	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Query: "%"})

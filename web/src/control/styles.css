@@ -543,49 +543,122 @@ kbd {
     monospace;
   padding: 2px 6px;
 }
-.filter-select {
+.multi-filter {
+  position: relative;
+}
+.multi-filter-button {
   align-items: center;
   background: #151d24;
   border: 1px solid var(--line);
   border-radius: 7px;
+  box-shadow: none;
   display: grid;
   font-size: 14px;
   font-weight: 400;
   gap: 0;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   height: 48px;
   line-height: 1.2;
-  padding: 5px 36px 5px 12px;
-  position: relative;
+  padding: 5px 12px;
+  text-align: left;
+  transform: none;
+  width: 100%;
 }
-.filter-select span {
+.multi-filter-button span {
   color: var(--muted);
   display: block;
   font-size: 12px;
   grid-column: 1 / -1;
 }
-.filter-select select {
-  appearance: none;
-  background: transparent;
-  border: 0;
+.multi-filter-button strong {
   color: var(--text);
+  display: block;
   font: inherit;
-  padding: 0;
-  width: 100%;
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.filter-select b {
+.multi-filter-button b {
   align-items: center;
   color: var(--muted);
   display: flex;
   line-height: 0;
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
 }
-.filter-select:hover {
+.multi-filter-button:hover,
+.multi-filter-button:focus-visible,
+.multi-filter-button[aria-expanded="true"] {
   background: #202a32;
   border-color: #52606c;
+  box-shadow: none;
+  transform: none;
+}
+.multi-filter-popover {
+  background: #151d24;
+  border: 1px solid #52606c;
+  border-radius: 9px;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 28%);
+  left: 0;
+  min-width: 220px;
+  padding: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  width: max-content;
+  z-index: 20;
+}
+.multi-filter-head {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+}
+.link-button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  padding: 0;
+}
+.link-button:hover,
+.link-button:focus-visible {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  transform: none;
+}
+.link-button:disabled {
+  opacity: 0.5;
+}
+.multi-filter-options {
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.multi-filter-option {
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  font-weight: 500;
+  gap: 9px;
+  margin: 0;
+  padding: 7px 8px;
+}
+.multi-filter-option:hover,
+.multi-filter-option:focus-within {
+  background: #202a32;
+}
+.multi-filter-option input {
+  accent-color: var(--accent-2);
+  flex: 0 0 auto;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  width: 15px;
 }
 .table-wrap {
   background: linear-gradient(180deg, var(--panel), #162027);
@@ -940,6 +1013,14 @@ textarea {
   padding: 7px 12px;
   width: 100%;
 }
+select:focus,
+select:focus-visible {
+  outline: none;
+}
+select:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px rgb(97 211 255 / 18%);
+}
 textarea {
   min-height: 56px;
   resize: vertical;
@@ -953,9 +1034,14 @@ textarea {
   display: flex;
   overflow: hidden;
 }
+.selectish:focus-within {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px rgb(97 211 255 / 18%);
+}
 .selectish select {
   appearance: none;
   border: 0;
+  box-shadow: none;
   padding-right: 36px;
 }
 .selectish select:disabled {

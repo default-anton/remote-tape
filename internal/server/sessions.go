@@ -228,8 +228,8 @@ func listSessionsInputFromQuery(values url.Values) session.ListSessionsInput {
 		PageSize:  parsePositiveInt(values.Get("page_size")),
 		Sort:      values.Get("sort"),
 		Direction: values.Get("direction"),
-		Status:    values.Get("status"),
-		Region:    values.Get("region"),
+		Statuses:  values["status"],
+		Regions:   values["region"],
 		Query:     values.Get("q"),
 	}
 }

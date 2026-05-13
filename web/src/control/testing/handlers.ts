@@ -152,16 +152,16 @@ export function controlHandlers(): HttpHandler[] {
 
 function mockListSessionsResponse(request: Request, sessions: Session[]) {
   const url = new URL(request.url);
-  const status = url.searchParams.get("status") ?? "";
-  const region = url.searchParams.get("region") ?? "";
+  const statuses = url.searchParams.getAll("status");
+  const regions = url.searchParams.getAll("region");
   const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
   const sort = url.searchParams.get("sort") ?? "updated_at";
   const direction = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
   let page = positiveInt(url.searchParams.get("page"), 1);
   const pageSize = positiveInt(url.searchParams.get("page_size"), 10);
   const filtered = sessions
-    .filter((session) => !status || session.status === status)
-    .filter((session) => !region || session.instance_region === region)
+    .filter((session) => statuses.length === 0 || statuses.includes(session.status))
+    .filter((session) => regions.length === 0 || regions.includes(session.instance_region))
     .filter(
       (session) =>
         !query ||
