@@ -126,6 +126,26 @@ type JoinResult struct {
 	Token   AccessToken `json:"token"`
 }
 
+type ListSessionsInput struct {
+	Page      int
+	PageSize  int
+	Sort      string
+	Direction string
+	Status    string
+	Region    string
+	Query     string
+}
+
+type ListSessionsResult struct {
+	Sessions       []Session
+	Total          int
+	Page           int
+	PageSize       int
+	StatusCounts   map[string]int
+	AttentionCount int
+	PollableCount  int
+}
+
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db, now: func() time.Time { return time.Now().UTC() }}
 }
@@ -270,14 +290,25 @@ values (?, ?, ?, ?, ?, ?);
 	}, nil
 }
 
-func (r *Repository) ListSessions(ctx context.Context) ([]Session, error) {
-	rows, err := r.db.QueryContext(ctx, `
-select `+sessionColumns+`
-from sessions
-order by updated_at desc, created_at desc, id desc;
-`)
+func (r *Repository) ListSessions(ctx context.Context, input ListSessionsInput) (ListSessionsResult, error) {
+	input = normalizeListSessionsInput(input)
+	where, args := listSessionsWhere(input)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, "select count(*) from sessions"+where, args...).Scan(&total); err != nil {
+		return ListSessionsResult{}, fmt.Errorf("count sessions: %w", err)
+	}
+	statusCounts, err := r.countSessionsByStatus(ctx, where, args)
 	if err != nil {
-		return nil, fmt.Errorf("list sessions: %w", err)
+		return ListSessionsResult{}, err
+	}
+	input.Page = clampListSessionsPage(input.Page, input.PageSize, total)
+
+	query := "select " + sessionColumns + " from sessions" + where + " order by " + listSessionsOrder(input) + " limit ? offset ?;"
+	args = append(args, input.PageSize, (input.Page-1)*input.PageSize)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return ListSessionsResult{}, fmt.Errorf("list sessions: %w", err)
 	}
 	defer rows.Close()
 
@@ -285,14 +316,144 @@ order by updated_at desc, created_at desc, id desc;
 	for rows.Next() {
 		s, err := scanSession(rows)
 		if err != nil {
-			return nil, err
+			return ListSessionsResult{}, err
 		}
 		sessions = append(sessions, s)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list sessions: %w", err)
+		return ListSessionsResult{}, fmt.Errorf("list sessions: %w", err)
 	}
-	return sessions, nil
+	return ListSessionsResult{
+		Sessions:       sessions,
+		Total:          total,
+		Page:           input.Page,
+		PageSize:       input.PageSize,
+		StatusCounts:   statusCounts,
+		AttentionCount: statusCounts["failed"],
+		PollableCount:  pollableSessionCount(statusCounts),
+	}, nil
+}
+
+func clampListSessionsPage(page int, pageSize int, total int) int {
+	if total == 0 {
+		return page
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+	if page > totalPages {
+		return totalPages
+	}
+	return page
+}
+
+func pollableSessionCount(statusCounts map[string]int) int {
+	count := 0
+	for status, statusCount := range statusCounts {
+		if pollableSessionStatus(status) {
+			count += statusCount
+		}
+	}
+	return count
+}
+
+func pollableSessionStatus(status string) bool {
+	switch status {
+	case "created", "provisioning", "waiting_for_dns", "ready", "active", "finalizing", "awaiting_manual_download", "teardown_pending", "tearing_down":
+		return true
+	case "ended", "failed":
+		return false
+	default:
+		return false
+	}
+}
+
+func (r *Repository) countSessionsByStatus(ctx context.Context, where string, args []any) (map[string]int, error) {
+	rows, err := r.db.QueryContext(ctx, "select status, count(*) from sessions"+where+" group by status;", args...)
+	if err != nil {
+		return nil, fmt.Errorf("count sessions by status: %w", err)
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		counts[status] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("count sessions by status: %w", err)
+	}
+	return counts, nil
+}
+
+func normalizeListSessionsInput(input ListSessionsInput) ListSessionsInput {
+	if input.Page < 1 {
+		input.Page = 1
+	}
+	if input.PageSize <= 0 {
+		input.PageSize = 10
+	}
+	if input.PageSize > 100 {
+		input.PageSize = 100
+	}
+	input.Sort = strings.TrimSpace(input.Sort)
+	if input.Sort == "" {
+		input.Sort = "updated_at"
+	}
+	input.Direction = strings.ToLower(strings.TrimSpace(input.Direction))
+	if input.Direction != "asc" {
+		input.Direction = "desc"
+	}
+	input.Status = strings.TrimSpace(input.Status)
+	input.Region = strings.TrimSpace(input.Region)
+	input.Query = strings.TrimSpace(input.Query)
+	return input
+}
+
+func listSessionsWhere(input ListSessionsInput) (string, []any) {
+	clauses := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if input.Status != "" {
+		clauses = append(clauses, "status = ?")
+		args = append(args, input.Status)
+	}
+	if input.Region != "" {
+		clauses = append(clauses, "instance_region = ?")
+		args = append(args, input.Region)
+	}
+	if input.Query != "" {
+		like := "%" + escapeSQLiteLike(strings.ToLower(input.Query)) + "%"
+		clauses = append(clauses, "(lower(title) like ? escape '\\' or lower(slug) like ? escape '\\' or lower(id) like ? escape '\\')")
+		args = append(args, like, like, like)
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " where " + strings.Join(clauses, " and "), args
+}
+
+func escapeSQLiteLike(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+func listSessionsOrder(input ListSessionsInput) string {
+	column := map[string]string{
+		"title":       "lower(title)",
+		"status":      "status",
+		"region":      "instance_region",
+		"room_domain": "room_domain",
+		"created_at":  "created_at",
+		"updated_at":  "updated_at",
+	}[input.Sort]
+	if column == "" {
+		column = "updated_at"
+	}
+	direction := "desc"
+	if input.Direction == "asc" {
+		direction = "asc"
+	}
+	return column + " " + direction + ", id " + direction
 }
 
 func (r *Repository) ListProvisioningCandidates(ctx context.Context, limit int) ([]Session, error) {

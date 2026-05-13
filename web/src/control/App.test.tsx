@@ -13,8 +13,8 @@ import {
   makeDetail,
   makeEvent,
   makeJoinResponse,
-  makeProvisioningOptions,
   makeSession,
+  makeSessionsResponse,
 } from "./testing/fixtures";
 import { createControlMockApi } from "./testing/handlers";
 import { renderApp } from "./testing/renderApp";
@@ -33,6 +33,7 @@ describe("form utilities", () => {
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
+  server.events.removeAllListeners();
   server.resetHandlers();
   mockApi.reset();
   window.history.replaceState({}, "", "/");
@@ -48,17 +49,41 @@ describe("control app", () => {
   });
 
   it("renders multiple lifecycle statuses in the sessions list", async () => {
+    renderApp("/sessions?scenario=mixed&page_size=25");
+
+    await screen.findByText("provisioning");
+    for (const status of [
+      "waiting_for_dns",
+      "ready",
+      "active",
+      "finalizing",
+      "awaiting_manual_download",
+      "teardown_pending",
+      "ended",
+      "failed",
+    ]) {
+      expect(screen.getAllByText(status).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("applies session list filters, sorting, and pagination through the API", async () => {
     renderApp("/sessions?scenario=mixed");
 
-    expect(await screen.findByText("provisioning")).toBeInTheDocument();
-    expect(screen.getByText("waiting_for_dns")).toBeInTheDocument();
-    expect(screen.getByText("ready")).toBeInTheDocument();
-    expect(screen.getByText("active")).toBeInTheDocument();
-    expect(screen.getByText("finalizing")).toBeInTheDocument();
-    expect(screen.getByText("awaiting_manual_download")).toBeInTheDocument();
-    expect(screen.getByText("teardown_pending")).toBeInTheDocument();
-    expect(screen.getAllByText("ended").length).toBeGreaterThan(0);
-    expect(screen.getByText("failed")).toBeInTheDocument();
+    await screen.findByRole("link", { name: "Ready Session 7" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Session" }));
+    await waitFor(() => expect(newSessionHref()).toContain("sort=title"));
+
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "ready" } });
+    await waitFor(() => expect(newSessionHref()).toContain("status=ready"));
+    expect(await screen.findByRole("link", { name: "Ready Session 7" })).toBeInTheDocument();
+    expect(screen.queryByText("active")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Region"), { target: { value: "nyc3" } });
+    await waitFor(() => expect(newSessionHref()).toContain("region=nyc3"));
+
+    fireEvent.change(screen.getByLabelText("Search sessions"), { target: { value: "ready" } });
+    await waitFor(() => expect(newSessionHref()).toContain("q=ready"));
   });
 
   it("shows dashboard stats for total, ready, active, and failed sessions", async () => {
@@ -71,11 +96,7 @@ describe("control app", () => {
   });
 
   it("renders an empty sessions list with a creation prompt", async () => {
-    server.use(
-      http.get("/api/sessions", () =>
-        HttpResponse.json({ sessions: [], provisioning_options: makeProvisioningOptions() }),
-      ),
-    );
+    server.use(http.get("/api/sessions", () => HttpResponse.json(makeSessionsResponse([]))));
 
     renderApp("/sessions");
 
@@ -633,17 +654,14 @@ describe("control app", () => {
 
   it("centralizes polling decisions around non-terminal session statuses", () => {
     expect(
-      sessionsListRefetchInterval({
-        sessions: [makeSession({ status: "failed" })],
-        provisioning_options: makeProvisioningOptions(),
-      }),
+      sessionsListRefetchInterval(makeSessionsResponse([makeSession({ status: "failed" })])),
     ).toBe(false);
     expect(
-      sessionsListRefetchInterval({
-        sessions: [makeSession({ status: "provisioning" })],
-        provisioning_options: makeProvisioningOptions(),
-      }),
+      sessionsListRefetchInterval(makeSessionsResponse([makeSession({ status: "provisioning" })])),
     ).toBe(5_000);
+    expect(sessionsListRefetchInterval({ ...makeSessionsResponse([]), has_pollable: true })).toBe(
+      5_000,
+    );
     expect(
       sessionDetailRefetchInterval({ ...makeDetail(), session: makeSession({ status: "ended" }) }),
     ).toBe(false);
@@ -664,6 +682,10 @@ describe("control app", () => {
 async function fetchAuthSession() {
   const response = await fetch("/api/auth/session");
   return response.json();
+}
+
+function newSessionHref() {
+  return screen.getByRole("link", { name: "＋ New session" }).getAttribute("href") ?? "";
 }
 
 function statValue(label: string) {

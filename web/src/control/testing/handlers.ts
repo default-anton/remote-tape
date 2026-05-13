@@ -4,6 +4,7 @@ import {
   makeJoinResponse,
   makeProvisioningOptions,
   makeSession,
+  makeSessionsResponse,
 } from "./fixtures";
 import { detailForSession, scenario, validGuestToken, validHostToken } from "./scenarios";
 import type { CreateSessionInput, JoinResponse, Session } from "../types";
@@ -50,10 +51,7 @@ export function createControlMockApi(): ControlMockApi {
       return new HttpResponse(null, { status: 204 });
     }),
     http.get("/api/sessions", ({ request }) => {
-      return HttpResponse.json({
-        sessions: sessionsFor(request),
-        provisioning_options: makeProvisioningOptions(),
-      });
+      return HttpResponse.json(mockListSessionsResponse(request, sessionsFor(request)));
     }),
     http.get("/api/sessions/:id", ({ params, request }) => {
       const id = String(params.id ?? "");
@@ -150,6 +148,74 @@ export function createControlMockApi(): ControlMockApi {
 
 export function controlHandlers(): HttpHandler[] {
   return createControlMockApi().handlers;
+}
+
+function mockListSessionsResponse(request: Request, sessions: Session[]) {
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "";
+  const region = url.searchParams.get("region") ?? "";
+  const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  const sort = url.searchParams.get("sort") ?? "updated_at";
+  const direction = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
+  let page = positiveInt(url.searchParams.get("page"), 1);
+  const pageSize = positiveInt(url.searchParams.get("page_size"), 10);
+  const filtered = sessions
+    .filter((session) => !status || session.status === status)
+    .filter((session) => !region || session.instance_region === region)
+    .filter(
+      (session) =>
+        !query ||
+        session.title.toLowerCase().includes(query) ||
+        session.slug.toLowerCase().includes(query) ||
+        session.id.toLowerCase().includes(query),
+    )
+    .sort((left, right) => compareSessions(left, right, sort, direction));
+  const total = filtered.length;
+  page = clampPage(page, pageSize, total);
+  const start = (page - 1) * pageSize;
+  const response = makeSessionsResponse(filtered);
+  response.sessions = filtered.slice(start, start + pageSize);
+  response.pagination = {
+    page,
+    page_size: pageSize,
+    total,
+    total_pages: total === 0 ? 0 : Math.ceil(total / pageSize),
+  };
+  return response;
+}
+
+function compareSessions(left: Session, right: Session, sort: string, direction: "asc" | "desc") {
+  const multiplier = direction === "asc" ? 1 : -1;
+  const leftValue = sessionSortValue(left, sort);
+  const rightValue = sessionSortValue(right, sort);
+  return multiplier * leftValue.localeCompare(rightValue);
+}
+
+function sessionSortValue(session: Session, sort: string) {
+  switch (sort) {
+    case "title":
+      return session.title.toLowerCase();
+    case "status":
+      return session.status;
+    case "region":
+      return session.instance_region;
+    case "room_domain":
+      return session.room_domain ?? "";
+    case "created_at":
+      return session.created_at;
+    default:
+      return session.updated_at;
+  }
+}
+
+function positiveInt(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clampPage(page: number, pageSize: number, total: number) {
+  if (total === 0) return page;
+  return Math.min(page, Math.ceil(total / pageSize));
 }
 
 function demoJoinSession(slug: string, token: string | null) {

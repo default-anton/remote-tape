@@ -87,15 +87,77 @@ func TestListSessionsReturnsEmptySlice(t *testing.T) {
 	db := openSessionTestDB(t, ctx)
 	repo := NewRepository(db)
 
-	sessions, err := repo.ListSessions(ctx)
+	result, err := repo.ListSessions(ctx, ListSessionsInput{})
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
-	if sessions == nil {
+	if result.Sessions == nil {
 		t.Fatal("ListSessions() returned nil slice")
 	}
-	if len(sessions) != 0 {
-		t.Fatalf("ListSessions() length = %d", len(sessions))
+	if len(result.Sessions) != 0 || result.Total != 0 {
+		t.Fatalf("ListSessions() result = %+v", result)
+	}
+}
+
+func TestListSessionsFiltersSortsAndPaginates(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	for _, item := range []struct {
+		id        string
+		title     string
+		slug      string
+		status    string
+		region    string
+		createdAt string
+		updatedAt string
+	}{
+		{"sess_alpha", "Alpha", "alpha", "ready", "nyc3", "2026-04-24T12:00:00.000000000Z", "2026-04-24T12:01:00.000000000Z"},
+		{"sess_beta", "Beta", "beta", "active", "sfo2", "2026-04-24T12:02:00.000000000Z", "2026-04-24T12:03:00.000000000Z"},
+		{"sess_gamma", "Gamma", "gamma", "ready", "sfo2", "2026-04-24T12:04:00.000000000Z", "2026-04-24T12:05:00.000000000Z"},
+	} {
+		if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values (?, ?, ?, ?, ?, 's-2vcpu-4gb', 'image', ?, ?);
+`, item.id, item.slug, item.title, item.status, item.region, item.createdAt, item.updatedAt); err != nil {
+			t.Fatalf("insert session %q: %v", item.id, err)
+		}
+	}
+
+	result, err := repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 1, Sort: "title", Direction: "desc", Status: "ready"})
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if result.Total != 2 || result.Page != 1 || result.PageSize != 1 || result.PollableCount != 2 {
+		t.Fatalf("pagination = %+v", result)
+	}
+	if len(result.Sessions) != 1 || result.Sessions[0].Slug != "gamma" {
+		t.Fatalf("sessions = %+v", result.Sessions)
+	}
+
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 99, PageSize: 1, Sort: "title", Direction: "desc", Status: "ready"})
+	if err != nil {
+		t.Fatalf("ListSessions() clamped page error = %v", err)
+	}
+	if result.Page != 2 || len(result.Sessions) != 1 || result.Sessions[0].Slug != "alpha" {
+		t.Fatalf("clamped result = %+v", result)
+	}
+
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Region: "sfo2", Query: "bet"})
+	if err != nil {
+		t.Fatalf("ListSessions() region query error = %v", err)
+	}
+	if result.Total != 1 || len(result.Sessions) != 1 || result.Sessions[0].Slug != "beta" {
+		t.Fatalf("filtered result = %+v", result)
+	}
+
+	result, err = repo.ListSessions(ctx, ListSessionsInput{Page: 1, PageSize: 10, Query: "%"})
+	if err != nil {
+		t.Fatalf("ListSessions() literal wildcard query error = %v", err)
+	}
+	if result.Total != 0 || len(result.Sessions) != 0 {
+		t.Fatalf("literal wildcard result = %+v", result)
 	}
 }
 

@@ -1,7 +1,9 @@
+import type { ListSessionsParams } from "./client";
+
 export const sessionsKeys = {
   all: ["sessions"] as const,
-  list: () => sessionsKeys.all,
-  detail: (id: string) => [...sessionsKeys.all, id] as const,
+  list: (params?: ListSessionsParams) => [...sessionsKeys.all, "list", params ?? {}] as const,
+  detail: (id: string) => [...sessionsKeys.all, "detail", id] as const,
 };
 
 export const slugKeys = {

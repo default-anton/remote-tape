@@ -96,8 +96,27 @@ async function postForm(path: string, fields: Record<string, string>) {
   throw new Error(message);
 }
 
-export function listSessions() {
-  return requestJSON("/api/sessions", SessionsResponseSchema);
+export type ListSessionsParams = {
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+  status?: string;
+  region?: string;
+  query?: string;
+};
+
+export function listSessions(params: ListSessionsParams = {}) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("page_size", String(params.pageSize));
+  if (params.sort) query.set("sort", params.sort);
+  if (params.direction) query.set("direction", params.direction);
+  if (params.status) query.set("status", params.status);
+  if (params.region) query.set("region", params.region);
+  if (params.query) query.set("q", params.query);
+  const suffix = query.size > 0 ? `?${query}` : "";
+  return requestJSON(`/api/sessions${suffix}`, SessionsResponseSchema);
 }
 
 export function getSession(id: string) {

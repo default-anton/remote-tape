@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -14,6 +15,7 @@ import {
   listSessions,
   login,
   logout,
+  type ListSessionsParams,
 } from "./client";
 import { shouldPollJoin, shouldPollSession } from "../domain/sessionStatus";
 import type {
@@ -22,14 +24,11 @@ import type {
   CreateSessionResponse,
   Detail,
   JoinResponse,
-  ProvisioningOptions,
-  Session,
+  SessionsResponse,
 } from "../types";
 import { joinKeys, sessionsKeys, slugKeys } from "./queryKeys";
 
 const sessionPollIntervalMs = 5_000;
-
-type SessionsResponse = { sessions: Session[]; provisioning_options: ProvisioningOptions };
 
 type CreateSessionOptions = Pick<
   UseMutationOptions<CreateSessionResponse, Error, CreateSessionInput>,
@@ -80,10 +79,11 @@ export function useLogout(options: LogoutOptions = {}) {
   });
 }
 
-export function useSessions() {
+export function useSessions(params: ListSessionsParams = {}) {
   return useQuery({
-    queryKey: sessionsKeys.list(),
-    queryFn: listSessions,
+    queryKey: sessionsKeys.list(params),
+    queryFn: () => listSessions(params),
+    placeholderData: keepPreviousData,
     refetchInterval: (query) => sessionsListRefetchInterval(query.state.data),
   });
 }
@@ -114,7 +114,7 @@ export function useCreateSession(options: CreateSessionOptions = {}) {
     retry: false,
     ...options,
     onSuccess: async (created, variables, onMutateResult, context) => {
-      await queryClient.invalidateQueries({ queryKey: sessionsKeys.list() });
+      await queryClient.invalidateQueries({ queryKey: sessionsKeys.all });
       queryClient.setQueryData(sessionsKeys.detail(created.session.id), {
         session: created.session,
         access_tokens: [],
@@ -135,7 +135,7 @@ export function useForceDestroySessionServer(options: ForceDestroyOptions = {}) 
     ...options,
     onSuccess: async (detail, variables, onMutateResult, context) => {
       queryClient.setQueryData(sessionsKeys.detail(detail.session.id), detail);
-      await queryClient.invalidateQueries({ queryKey: sessionsKeys.list() });
+      await queryClient.invalidateQueries({ queryKey: sessionsKeys.all });
       await options.onSuccess?.(detail, variables, onMutateResult, context);
     },
   });
@@ -152,7 +152,7 @@ export function useJoinSession(slug: string | undefined, token: string) {
 }
 
 export function sessionsListRefetchInterval(data: SessionsResponse | undefined) {
-  if (!data?.sessions.some((session) => shouldPollSession(session.status))) return false;
+  if (!data?.has_pollable) return false;
   return sessionPollIntervalMs;
 }
 

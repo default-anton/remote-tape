@@ -6,6 +6,7 @@ import type {
   JoinResponse,
   ProvisioningOptions,
   Session,
+  SessionsResponse,
 } from "../types";
 
 const timestamp = "2026-04-25T10:00:00.000000000Z";
@@ -52,6 +53,40 @@ export function makeProvisioningOptions(
       sfo2: "s-2vcpu-4gb",
     },
     ...overrides,
+  };
+}
+
+export function makeSessionsResponse(sessions: Session[]): SessionsResponse {
+  return {
+    sessions,
+    pagination: {
+      page: 1,
+      page_size: 10,
+      total: sessions.length,
+      total_pages: sessions.length === 0 ? 0 : Math.ceil(sessions.length / 10),
+    },
+    summary: sessionSummary(sessions),
+    filters: {
+      statuses: [
+        { value: "created", label: "Created" },
+        { value: "provisioning", label: "Provisioning" },
+        { value: "waiting_for_dns", label: "Waiting for DNS" },
+        { value: "ready", label: "Ready" },
+        { value: "active", label: "Active" },
+        { value: "finalizing", label: "Finalizing" },
+        { value: "awaiting_manual_download", label: "Awaiting manual download" },
+        { value: "teardown_pending", label: "Teardown pending" },
+        { value: "tearing_down", label: "Tearing down" },
+        { value: "ended", label: "Ended" },
+        { value: "failed", label: "Failed" },
+      ],
+      regions: makeProvisioningOptions().regions.map((region) => ({
+        value: region.slug,
+        label: region.label,
+      })),
+    },
+    has_pollable: sessions.some((session) => pollableSessionStatus(session.status)),
+    provisioning_options: makeProvisioningOptions(),
   };
 }
 
@@ -185,6 +220,25 @@ export function makeJoinResponse({
     },
     token: { role },
   };
+}
+
+function sessionSummary(sessions: Session[]): SessionsResponse["summary"] {
+  return {
+    total: sessions.length,
+    provisioning: sessions.filter((session) =>
+      ["created", "provisioning", "waiting_for_dns"].includes(session.status),
+    ).length,
+    ready: sessions.filter((session) => session.status === "ready").length,
+    active: sessions.filter((session) => session.status === "active").length,
+    awaiting_manual_download: sessions.filter((session) =>
+      ["finalizing", "awaiting_manual_download", "teardown_pending"].includes(session.status),
+    ).length,
+    failed: sessions.filter((session) => session.status === "failed").length,
+  };
+}
+
+function pollableSessionStatus(status: Session["status"]) {
+  return !["ended", "failed"].includes(status);
 }
 
 function titleFromSlug(slug: string) {

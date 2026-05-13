@@ -87,8 +87,32 @@ export const ProvisioningOptionsSchema = z.object({
   recommended_size_by_region: z.record(z.string(), z.string()),
 });
 
+export const SessionFilterOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
 export const SessionsResponseSchema = z.object({
   sessions: z.array(SessionSchema),
+  pagination: z.object({
+    page: z.number(),
+    page_size: z.number(),
+    total: z.number(),
+    total_pages: z.number(),
+  }),
+  summary: z.object({
+    total: z.number(),
+    provisioning: z.number(),
+    ready: z.number(),
+    active: z.number(),
+    awaiting_manual_download: z.number(),
+    failed: z.number(),
+  }),
+  filters: z.object({
+    statuses: z.array(SessionFilterOptionSchema),
+    regions: z.array(SessionFilterOptionSchema),
+  }),
+  has_pollable: z.boolean(),
   provisioning_options: ProvisioningOptionsSchema,
 });
 
@@ -141,6 +165,8 @@ export const JoinResponseSchema = z.object({
 });
 
 export type Session = z.infer<typeof SessionSchema>;
+export type SessionFilterOption = z.infer<typeof SessionFilterOptionSchema>;
+export type SessionsResponse = z.infer<typeof SessionsResponseSchema>;
 export type ProvisioningOptions = z.infer<typeof ProvisioningOptionsSchema>;
 export type SlugAvailability = z.infer<typeof SlugAvailabilitySchema>;
 export type AccessToken = z.infer<typeof AccessTokenSchema>;

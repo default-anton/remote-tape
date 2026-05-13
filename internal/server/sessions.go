@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,18 +58,50 @@ type forceDestroyRequest struct {
 	Confirmation string `json:"confirmation"`
 }
 
+type listSessionsResponse struct {
+	Sessions            []session.Session   `json:"sessions"`
+	Pagination          sessionsPagination  `json:"pagination"`
+	Summary             sessionsSummary     `json:"summary"`
+	Filters             sessionsFilters     `json:"filters"`
+	HasPollable         bool                `json:"has_pollable"`
+	ProvisioningOptions provisioningOptions `json:"provisioning_options"`
+}
+
+type sessionsPagination struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"page_size"`
+	Total      int `json:"total"`
+	TotalPages int `json:"total_pages"`
+}
+
+type sessionsSummary struct {
+	Total                  int `json:"total"`
+	Provisioning           int `json:"provisioning"`
+	Ready                  int `json:"ready"`
+	Active                 int `json:"active"`
+	AwaitingManualDownload int `json:"awaiting_manual_download"`
+	Failed                 int `json:"failed"`
+}
+
+type sessionsFilters struct {
+	Statuses []sessionFilterOption `json:"statuses"`
+	Regions  []sessionFilterOption `json:"regions"`
+}
+
+type sessionFilterOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		sessions, err := s.repo.ListSessions(r.Context())
+		result, err := s.repo.ListSessions(r.Context(), listSessionsInputFromQuery(r.URL.Query()))
 		if err != nil {
 			writeOperationError(w, http.StatusInternalServerError, "list sessions", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"sessions":             sessions,
-			"provisioning_options": provisioningOptionsFor(s.options.DefaultRegion, s.options.DefaultInstanceSize),
-		})
+		writeJSON(w, http.StatusOK, listSessionsResponseFor(result, s.options.DefaultRegion, s.options.DefaultInstanceSize))
 	case http.MethodPost:
 		var req createSessionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -187,6 +220,81 @@ func (s *Server) apiForceDestroySession(w http.ResponseWriter, r *http.Request, 
 
 func forceDestroyEligible(status string) bool {
 	return status == "provisioning" || status == "waiting_for_dns" || status == "failed"
+}
+
+func listSessionsInputFromQuery(values url.Values) session.ListSessionsInput {
+	return session.ListSessionsInput{
+		Page:      parsePositiveInt(values.Get("page")),
+		PageSize:  parsePositiveInt(values.Get("page_size")),
+		Sort:      values.Get("sort"),
+		Direction: values.Get("direction"),
+		Status:    values.Get("status"),
+		Region:    values.Get("region"),
+		Query:     values.Get("q"),
+	}
+}
+
+func parsePositiveInt(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 1 {
+		return 0
+	}
+	return parsed
+}
+
+func listSessionsResponseFor(result session.ListSessionsResult, defaultRegion string, defaultSize string) listSessionsResponse {
+	return listSessionsResponse{
+		Sessions:            result.Sessions,
+		Pagination:          sessionsPaginationFor(result),
+		Summary:             sessionsSummaryFor(result),
+		Filters:             sessionsFiltersFor(),
+		HasPollable:         result.PollableCount > 0,
+		ProvisioningOptions: provisioningOptionsFor(defaultRegion, defaultSize),
+	}
+}
+
+func sessionsPaginationFor(result session.ListSessionsResult) sessionsPagination {
+	totalPages := 0
+	if result.Total > 0 {
+		totalPages = (result.Total + result.PageSize - 1) / result.PageSize
+	}
+	return sessionsPagination{Page: result.Page, PageSize: result.PageSize, Total: result.Total, TotalPages: totalPages}
+}
+
+func sessionsSummaryFor(result session.ListSessionsResult) sessionsSummary {
+	counts := result.StatusCounts
+	return sessionsSummary{
+		Total:                  result.Total,
+		Provisioning:           counts["created"] + counts["provisioning"] + counts["waiting_for_dns"],
+		Ready:                  counts["ready"],
+		Active:                 counts["active"],
+		AwaitingManualDownload: counts["finalizing"] + counts["awaiting_manual_download"] + counts["teardown_pending"],
+		Failed:                 result.AttentionCount,
+	}
+}
+
+func sessionsFiltersFor() sessionsFilters {
+	regions := make([]sessionFilterOption, 0, len(provisioningCatalog.Regions))
+	for _, region := range provisioningCatalog.Regions {
+		regions = append(regions, sessionFilterOption{Value: region.Slug, Label: region.Label})
+	}
+	return sessionsFilters{Statuses: sessionStatusFilterOptions(), Regions: regions}
+}
+
+func sessionStatusFilterOptions() []sessionFilterOption {
+	return []sessionFilterOption{
+		{Value: "created", Label: "Created"},
+		{Value: "provisioning", Label: "Provisioning"},
+		{Value: "waiting_for_dns", Label: "Waiting for DNS"},
+		{Value: "ready", Label: "Ready"},
+		{Value: "active", Label: "Active"},
+		{Value: "finalizing", Label: "Finalizing"},
+		{Value: "awaiting_manual_download", Label: "Awaiting manual download"},
+		{Value: "teardown_pending", Label: "Teardown pending"},
+		{Value: "tearing_down", Label: "Tearing down"},
+		{Value: "ended", Label: "Ended"},
+		{Value: "failed", Label: "Failed"},
+	}
 }
 
 func (s *Server) apiJoin(w http.ResponseWriter, r *http.Request) {
