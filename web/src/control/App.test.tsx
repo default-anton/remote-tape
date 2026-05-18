@@ -193,7 +193,7 @@ describe("control app", () => {
     expect(screen.getAllByText(/^room-[a-z2-7]{26}\.sessions\.localhost$/).length).toBeGreaterThan(
       0,
     );
-    expect(screen.getByText("dns_ready")).toBeInTheDocument();
+    expect(screen.getAllByText("dns_ready").length).toBeGreaterThan(0);
   });
 
   it("copies the public IP from the session detail route", async () => {

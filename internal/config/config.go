@@ -249,6 +249,9 @@ func (c Config) Validate() error {
 		if c.General.SessionsBaseDomain == "sessions.localhost" {
 			errs = append(errs, errors.New("REMOTE_TAPE_SESSIONS_BASE_DOMAIN must be configured in production"))
 		}
+		if !c.Security.CloudflareAPIToken.Set() {
+			errs = append(errs, errors.New("REMOTE_TAPE_CLOUDFLARE_API_TOKEN is required in production"))
+		}
 	}
 
 	return errors.Join(errs...)

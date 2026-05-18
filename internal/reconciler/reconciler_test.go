@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/dns"
 	"github.com/default-anton/remote-tape/internal/provisioning"
 	"github.com/default-anton/remote-tape/internal/session"
 )
@@ -22,7 +23,7 @@ func TestStepMovesCreatedSessionsToProvisioning(t *testing.T) {
 	first := createTestSession(t, ctx, repo, "First", "first")
 	second := createTestSession(t, ctx, repo, "Second", "second")
 
-	r := New(repo, fakeProvisioner{}, discardLogger(), Options{})
+	r := New(repo, fakeProvisioner{}, nil, discardLogger(), Options{})
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("Step() error = %v", err)
 	}
@@ -34,7 +35,7 @@ func TestStepMovesCreatedSessionsToProvisioning(t *testing.T) {
 func TestStepUsesConfiguredBatchSize(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeStore{candidates: []session.Session{{ID: "sess_one"}, {ID: "sess_two"}, {ID: "sess_three"}}}
-	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{BatchSize: 2})
+	r := newReconciler(store, fakeProvisioner{}, nil, discardLogger(), Options{BatchSize: 2})
 
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("Step() error = %v", err)
@@ -48,7 +49,7 @@ func TestStepIsIdempotentForAlreadyClaimedSessions(t *testing.T) {
 	ctx := context.Background()
 	repo := openReconcilerTestRepo(t, ctx)
 	created := createTestSession(t, ctx, repo, "Once", "once")
-	r := New(repo, fakeProvisioner{}, discardLogger(), Options{})
+	r := New(repo, fakeProvisioner{}, nil, discardLogger(), Options{})
 
 	if err := r.Step(ctx); err != nil {
 		t.Fatalf("first Step() error = %v", err)
@@ -59,12 +60,179 @@ func TestStepIsIdempotentForAlreadyClaimedSessions(t *testing.T) {
 	assertStatus(t, ctx, repo, created.Session.ID, "waiting_for_dns", 1, 3)
 }
 
+func TestStepEnsuresDNSForWaitingSession(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	created := createDNSCandidate(t, ctx, repo, "DNS", "dns")
+	dnsManager := &fakeDNSManager{result: dns.RecordResult{ID: "dns_123", ZoneID: "zone_123", Name: *created.Session.RoomDomain, Content: "203.0.113.10", Operation: "created"}}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	if err := r.Step(ctx); err != nil {
+		t.Fatalf("Step() error = %v", err)
+	}
+	if len(dnsManager.ensureInputs) != 1 || dnsManager.ensureInputs[0].RoomDomain != *created.Session.RoomDomain || dnsManager.ensureInputs[0].PublicIP != "203.0.113.10" {
+		t.Fatalf("ensure inputs = %+v", dnsManager.ensureInputs)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "waiting_for_dns" || detail.Session.DNSRecordID == nil || *detail.Session.DNSRecordID != "dns_123" || detail.Events[len(detail.Events)-1].Type != "dns.configured" {
+		t.Fatalf("session after dns = %+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
+func TestStepPersistsDNSFailureAndContinuesCandidates(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	bad := createDNSCandidate(t, ctx, repo, "Bad DNS", "bad-dns")
+	good := createDNSCandidate(t, ctx, repo, "Good DNS", "good-dns")
+	dnsManager := &fakeDNSManager{
+		result: dns.RecordResult{ID: "dns_good", ZoneID: "zone_123", Name: *good.Session.RoomDomain, Content: "203.0.113.10", Operation: "created"},
+		failForRoom: map[string]error{
+			*bad.Session.RoomDomain: errors.New("cloudflare timeout"),
+		},
+	}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	err := r.Step(ctx)
+	if err == nil || !strings.Contains(err.Error(), "cloudflare timeout") {
+		t.Fatalf("Step() error = %v", err)
+	}
+	badDetail, err := repo.GetSession(ctx, bad.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession(bad) error = %v", err)
+	}
+	if badDetail.Session.Status != "waiting_for_dns" || badDetail.Session.DNSAttempts != 1 || badDetail.Session.LastErrorPhase == nil || *badDetail.Session.LastErrorPhase != "dns" {
+		t.Fatalf("bad session = %+v", badDetail.Session)
+	}
+	goodDetail, err := repo.GetSession(ctx, good.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession(good) error = %v", err)
+	}
+	if goodDetail.Session.DNSRecordID == nil || *goodDetail.Session.DNSRecordID != "dns_good" {
+		t.Fatalf("good session = %+v", goodDetail.Session)
+	}
+}
+
+func TestStepDNSConfiguredSecondPassIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	created := createDNSCandidate(t, ctx, repo, "DNS Twice", "dns-twice")
+	dnsManager := &fakeDNSManager{result: dns.RecordResult{ID: "dns_once", ZoneID: "zone_123", Name: *created.Session.RoomDomain, Content: "203.0.113.10", Operation: "created"}}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	if err := r.Step(ctx); err != nil {
+		t.Fatalf("first Step() error = %v", err)
+	}
+	dnsManager.result.Operation = "adopted"
+	if err := r.Step(ctx); err != nil {
+		t.Fatalf("second Step() error = %v", err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	dnsEvents := 0
+	for _, event := range detail.Events {
+		if event.Type == "dns.configured" {
+			dnsEvents++
+		}
+	}
+	if dnsEvents != 1 || len(dnsManager.ensureInputs) != 2 || dnsManager.ensureInputs[1].DNSRecordID != "dns_once" {
+		t.Fatalf("dnsEvents=%d ensureInputs=%+v", dnsEvents, dnsManager.ensureInputs)
+	}
+}
+
+func TestStepDNSFailureDoesNotStopForceDestroy(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	candidate := createDNSCandidate(t, ctx, repo, "DNS Fails", "dns-fails")
+	teardown := createDNSCandidate(t, ctx, repo, "Teardown", "teardown")
+	if changed, err := repo.MarkDNSConfigured(ctx, teardown.Session.ID, "dns_teardown", session.DNSConfiguredMetadata{RoomDomain: *teardown.Session.RoomDomain, PublicIP: "203.0.113.10", Operation: "created"}); err != nil || !changed {
+		t.Fatalf("MarkDNSConfigured() changed=%v error=%v", changed, err)
+	}
+	if changed, err := repo.MarkForceDestroyStarted(ctx, teardown.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	dnsManager := &fakeDNSManager{
+		result: dns.RecordResult{ID: "unused", Name: *candidate.Session.RoomDomain, Content: "203.0.113.10", Operation: "created"},
+		failForRoom: map[string]error{
+			*candidate.Session.RoomDomain: errors.New("cloudflare down"),
+		},
+	}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	err := r.Step(ctx)
+	if err == nil || !strings.Contains(err.Error(), "cloudflare down") {
+		t.Fatalf("Step() error = %v", err)
+	}
+	detail, err := repo.GetSession(ctx, teardown.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession(teardown) error = %v", err)
+	}
+	if detail.Session.Status != "ended" {
+		t.Fatalf("teardown session = %+v", detail.Session)
+	}
+}
+
+func TestStepDeletesDNSByLookupBeforeForceDestroy(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	teardown := createDNSCandidate(t, ctx, repo, "Lookup Delete", "lookup-delete")
+	if changed, err := repo.MarkForceDestroyStarted(ctx, teardown.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	dnsManager := &fakeDNSManager{}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	if err := r.Step(ctx); err != nil {
+		t.Fatalf("Step() error = %v", err)
+	}
+	if len(dnsManager.deleteInputs) != 1 || dnsManager.deleteInputs[0].DNSRecordID != "" || dnsManager.deleteInputs[0].RoomDomain != *teardown.Session.RoomDomain {
+		t.Fatalf("delete inputs = %+v", dnsManager.deleteInputs)
+	}
+	detail, err := repo.GetSession(ctx, teardown.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "ended" {
+		t.Fatalf("teardown session = %+v", detail.Session)
+	}
+}
+
+func TestStepDNSDeleteFailureBlocksForceDestroy(t *testing.T) {
+	ctx := context.Background()
+	repo := openReconcilerTestRepo(t, ctx)
+	teardown := createDNSCandidate(t, ctx, repo, "Delete Fails", "delete-fails")
+	if changed, err := repo.MarkDNSConfigured(ctx, teardown.Session.ID, "dns_delete", session.DNSConfiguredMetadata{RoomDomain: *teardown.Session.RoomDomain, PublicIP: "203.0.113.10", Operation: "created"}); err != nil || !changed {
+		t.Fatalf("MarkDNSConfigured() changed=%v error=%v", changed, err)
+	}
+	if changed, err := repo.MarkForceDestroyStarted(ctx, teardown.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkForceDestroyStarted() changed=%v error=%v", changed, err)
+	}
+	dnsManager := &fakeDNSManager{deleteErr: errors.New("cloudflare delete failed")}
+	r := New(repo, fakeProvisioner{}, dnsManager, discardLogger(), Options{SessionsBaseDomain: "sessions.example.com"})
+
+	err := r.Step(ctx)
+	if err == nil || !strings.Contains(err.Error(), "cloudflare delete failed") {
+		t.Fatalf("Step() error = %v", err)
+	}
+	detail, err := repo.GetSession(ctx, teardown.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "tearing_down" || detail.Session.LastErrorPhase == nil || *detail.Session.LastErrorPhase != "dns" || detail.Session.DNSAttempts != 1 {
+		t.Fatalf("teardown session = %+v", detail.Session)
+	}
+}
+
 func TestStepDestroysInstanceCreatedAfterForceDestroyRequest(t *testing.T) {
 	ctx := context.Background()
 	repo := openReconcilerTestRepo(t, ctx)
 	created := createTestSession(t, ctx, repo, "Race", "race")
 	provisioner := newBlockingProvisioner(provisioning.InstanceResult{ID: "789", IP: "203.0.113.89"})
-	r := New(repo, provisioner, discardLogger(), Options{})
+	r := New(repo, provisioner, nil, discardLogger(), Options{})
 	done := make(chan error, 1)
 
 	go func() {
@@ -108,7 +276,7 @@ func TestStepKeepsProcessingAfterCandidateFailure(t *testing.T) {
 		candidates: []session.Session{{ID: "sess_bad"}, {ID: "sess_good"}},
 		fail:       map[string]error{"sess_bad": errors.New("database busy")},
 	}
-	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{})
+	r := newReconciler(store, fakeProvisioner{}, nil, discardLogger(), Options{})
 
 	err := r.Step(ctx)
 	if err == nil || !strings.Contains(err.Error(), "sess_bad") {
@@ -122,7 +290,7 @@ func TestStepKeepsProcessingAfterCandidateFailure(t *testing.T) {
 func TestRunStepsImmediatelyAndThenTicksUntilCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	store := &fakeStore{candidates: []session.Session{{ID: "sess_one"}}}
-	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{Interval: time.Hour})
+	r := newReconciler(store, fakeProvisioner{}, nil, discardLogger(), Options{Interval: time.Hour})
 	done := make(chan struct{})
 
 	go func() {
@@ -146,7 +314,7 @@ func TestRunLogsStepErrorsAndContinues(t *testing.T) {
 		candidates: []session.Session{{ID: "sess_flaky"}},
 		fail:       map[string]error{"sess_flaky": errors.New("temporary failure")},
 	}
-	r := newReconciler(store, fakeProvisioner{}, discardLogger(), Options{Interval: time.Millisecond})
+	r := newReconciler(store, fakeProvisioner{}, nil, discardLogger(), Options{Interval: time.Millisecond})
 	done := make(chan struct{})
 
 	go func() {
@@ -196,6 +364,10 @@ func (s *fakeStore) ListProvisioningSessions(context.Context, int) ([]session.Se
 	return nil, nil
 }
 
+func (s *fakeStore) ListDNSCandidates(context.Context, int) ([]session.Session, error) {
+	return nil, nil
+}
+
 func (s *fakeStore) ListTearingDownSessions(context.Context, int) ([]session.Session, error) {
 	return nil, nil
 }
@@ -208,12 +380,65 @@ func (s *fakeStore) MarkProvisioningFailed(context.Context, string, error) (bool
 	return true, nil
 }
 
+func (s *fakeStore) MarkDNSConfigured(context.Context, string, string, session.DNSConfiguredMetadata) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) MarkDNSFailed(context.Context, string, error, session.DNSFailureMetadata) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) MarkDNSDeleted(context.Context, string, session.DNSDeletedMetadata) (bool, error) {
+	return true, nil
+}
+
 func (s *fakeStore) MarkForceDestroyed(context.Context, string, string) (bool, error) {
 	return true, nil
 }
 
 func (s *fakeStore) MarkForceDestroyFailed(context.Context, string, error) (bool, error) {
 	return true, nil
+}
+
+type fakeDNSManager struct {
+	result       dns.RecordResult
+	err          error
+	deleteErr    error
+	failForRoom  map[string]error
+	ensureInputs []dns.EnsureARecordInput
+	deleteInputs []dns.DeleteRecordInput
+}
+
+func (m *fakeDNSManager) EnsureARecord(_ context.Context, input dns.EnsureARecordInput) (dns.RecordResult, error) {
+	m.ensureInputs = append(m.ensureInputs, input)
+	if err := m.failForRoom[input.RoomDomain]; err != nil {
+		return dns.RecordResult{}, err
+	}
+	if m.err != nil {
+		return dns.RecordResult{}, m.err
+	}
+	result := m.result
+	if result.Name == "" {
+		result.Name = input.RoomDomain
+	}
+	if result.Content == "" {
+		result.Content = input.PublicIP
+	}
+	if result.ID == "" {
+		result.ID = input.DNSRecordID
+	}
+	if result.Operation == "" {
+		result.Operation = "adopted"
+	}
+	return result, nil
+}
+
+func (m *fakeDNSManager) DeleteRecord(_ context.Context, input dns.DeleteRecordInput) error {
+	m.deleteInputs = append(m.deleteInputs, input)
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	return m.err
 }
 
 type fakeProvisioner struct{}
@@ -288,6 +513,26 @@ func createTestSession(t *testing.T, ctx context.Context, repo *session.Reposito
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
+	return created
+}
+
+func createDNSCandidate(t *testing.T, ctx context.Context, repo *session.Repository, title string, slug string) session.CreateResult {
+	t.Helper()
+	created, err := repo.CreateSession(ctx, session.CreateInput{Title: title, Slug: slug, InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+	if assignment, err := repo.AssignInstance(ctx, created.Session.ID, "123", "203.0.113.10", false); err != nil || !assignment.Changed {
+		t.Fatalf("AssignInstance() assignment=%+v error=%v", assignment, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	created.Session = detail.Session
 	return created
 }
 

@@ -1,6 +1,6 @@
 import { makeDetail, makeSession } from "./fixtures";
 import { SESSION_STATUSES, type SessionStatus } from "../domain/sessionStatus";
-import type { Detail, Session } from "../types";
+import type { Detail, Event, Session } from "../types";
 
 export const lifecycleStatuses = SESSION_STATUSES;
 
@@ -104,7 +104,7 @@ function mixedScenario(): ControlScenario {
       title: "The Infra Podcast #312",
       status: "provisioning",
       instance_region: "nyc3",
-      room_domain: "theinfra.cast.remote-tape.io",
+      room_domain: "room-bm6q2thx5k7z9n4p.sessions.remote-tape.io",
     },
     {
       id: "sess_01HZX6F8T2P5Q7R1V0D96F3",
@@ -112,7 +112,7 @@ function mixedScenario(): ControlScenario {
       title: "Product Builders Live",
       status: "waiting_for_dns",
       instance_region: "sfo2",
-      room_domain: "pblive.cast.remote-tape.io",
+      room_domain: "room-waitingdns01.sessions.remote-tape.io",
     },
     {
       id: "sess_01HZX4M1B6N8D2C3V7E5F9A1",
@@ -120,7 +120,7 @@ function mixedScenario(): ControlScenario {
       title: "Syntax.fm – Recording",
       status: "ready",
       instance_region: "nyc3",
-      room_domain: "syntax.cast.remote-tape.io",
+      room_domain: "room-syntax9z4m2k.sessions.remote-tape.io",
     },
     {
       id: "sess_01HZX2Y9Y3K6L8M0N4Q1W2E7",
@@ -128,7 +128,7 @@ function mixedScenario(): ControlScenario {
       title: "Founders Unplugged",
       status: "active",
       instance_region: "fra1",
-      room_domain: "founders.cast.remote-tape.io",
+      room_domain: "room-founders7x1q.sessions.remote-tape.io",
     },
     {
       id: "sess_01HZWZ8J1R4T6V3B9N0C2D5E",
@@ -156,11 +156,13 @@ function mixedScenario(): ControlScenario {
     },
     {
       id: "sess_01HZWQ3PBV4K2M6N9D1E5F7G",
-      slug: "latent-space",
-      title: "Latent Space",
-      status: "ended",
+      slug: "dns-configured",
+      title: "DNS Configured Waiting Room",
+      status: "waiting_for_dns",
       instance_region: "sfo2",
-      room_domain: "latent.cast.remote-tape.io",
+      room_domain: "room-configured8q2.sessions.remote-tape.io",
+      dns_record_id: "dns_configured_waiting",
+      dns_attempts: 1,
     },
     {
       id: "sess_01HZWJ2H9L6B7V3C1X4Z8A5S",
@@ -180,7 +182,15 @@ function mixedScenario(): ControlScenario {
     },
   ];
   const extraRows: Array<Partial<Session> & { status: SessionStatus }> = [
-    { title: "Provisioning Backfill", status: "created" },
+    {
+      title: "DNS Failed Waiting Room",
+      status: "waiting_for_dns",
+      room_domain: "room-faileddns7k.sessions.remote-tape.io",
+      dns_attempts: 2,
+      last_error: "Cloudflare DNS edit failed: token lacks Zone:DNS:Edit",
+      last_error_at: "2025-05-17T16:44:00.000000000Z",
+      last_error_phase: "dns",
+    },
     ...Array.from({ length: 7 }, (_, index) => ({
       title: `Ready Session ${index + 1}`,
       status: "ready" as const,
@@ -220,7 +230,8 @@ function mixedScenario(): ControlScenario {
     makeSession({
       id: row.id ?? `sess_01HZWMIXED${String(index).padStart(2, "0")}`,
       slug: row.slug ?? `mixed-session-${index}`,
-      room_domain: row.room_domain ?? `session-${index}.cast.remote-tape.io`,
+      room_domain:
+        row.room_domain ?? `room-mock${String(index).padStart(2, "0")}.sessions.remote-tape.io`,
       created_at: createdAt[index] ?? "2025-05-16T17:00:00.000000000Z",
       updated_at: updatedAt[index] ?? "2025-05-17T17:00:00.000000000Z",
       ...statusDetails[row.status],
@@ -260,7 +271,7 @@ function provisioningFailedScenario(): ControlScenario {
 }
 
 function eventsForSession(session: Session) {
-  const events = [
+  const events: Event[] = [
     {
       id: 1,
       session_id: session.id,
@@ -278,6 +289,36 @@ function eventsForSession(session: Session) {
       message: "Provisioning started",
       metadata_json: null,
       created_at: session.updated_at,
+    });
+  }
+  if (session.dns_record_id) {
+    events.push({
+      id: events.length + 1,
+      session_id: session.id,
+      type: "dns.configured",
+      message: "DNS configured",
+      metadata_json: JSON.stringify({
+        room_domain: session.room_domain,
+        public_ip: session.public_ip,
+        dns_record_id: session.dns_record_id,
+        operation: "adopted",
+      }),
+      created_at: session.updated_at,
+    });
+  }
+  if (session.last_error_phase === "dns") {
+    events.push({
+      id: events.length + 1,
+      session_id: session.id,
+      type: "dns.failed",
+      message: "DNS provisioning failed",
+      metadata_json: JSON.stringify({
+        room_domain: session.room_domain,
+        public_ip: session.public_ip,
+        operation: "ensure",
+        error: session.last_error,
+      }),
+      created_at: session.last_error_at ?? session.updated_at,
     });
   }
   if (session.status === "failed" && session.last_error_phase === "provisioning") {

@@ -4,20 +4,6 @@ Implementation slices are execution checkpoints, not durable architecture. Compl
 
 ## Current slice
 
-### Slice 6: Cloudflare DNS
-
-- create room DNS record
-- delete room DNS record
-- adopt/update existing record
-- retry safely after partial failure
-- persist `dns_record_id` and DNS-related errors
-
-Demo:
-
-```txt
-Create session -> room domain resolves to instance IP -> timeline shows DNS creation
-```
-
 ### Slice 7: session-server callback contract
 
 - generate per-session machine token

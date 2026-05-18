@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
+
+	"github.com/default-anton/remote-tape/internal/config"
+	"github.com/default-anton/remote-tape/internal/dns"
 )
 
 func TestRunReturnsFailureWhenHTTPPortUnavailable(t *testing.T) {
@@ -28,6 +34,50 @@ func TestRunReturnsFailureForInvalidProvisioningDefaults(t *testing.T) {
 
 	if code := run(context.Background()); code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
+	}
+}
+
+func TestNewDNSManagerUsesDisabledManagerWithoutToken(t *testing.T) {
+	cfg := config.Config{
+		General: config.GeneralSettings{SessionsBaseDomain: "sessions.example.com"},
+	}
+	manager, err := newDNSManagerWithAPI(context.Background(), cfg, "http://127.0.0.1", nil)
+	if err != nil {
+		t.Fatalf("newDNSManagerWithAPI() error = %v", err)
+	}
+	if _, ok := manager.(dns.DisabledManager); !ok {
+		t.Fatalf("manager type = %T, want dns.DisabledManager", manager)
+	}
+}
+
+func TestNewDNSManagerValidatesCloudflareZoneWithToken(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("Authorization") != "Bearer cf_test" {
+			t.Fatalf("Authorization header = %q", r.Header.Get("Authorization"))
+		}
+		var result []map[string]string
+		if r.URL.Path == "/client/v4/zones" && r.URL.Query().Get("name") == "example.com" {
+			result = []map[string]string{{"id": "zone_123", "name": "example.com"}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": result})
+	}))
+	defer server.Close()
+
+	cfg := config.Config{
+		General:  config.GeneralSettings{SessionsBaseDomain: "sessions.example.com"},
+		Security: config.SecuritySettings{CloudflareAPIToken: "cf_test"},
+	}
+	manager, err := newDNSManagerWithAPI(context.Background(), cfg, server.URL, server.Client())
+	if err != nil {
+		t.Fatalf("newDNSManagerWithAPI() error = %v", err)
+	}
+	if _, ok := manager.(*dns.CloudflareManager); !ok {
+		t.Fatalf("manager type = %T, want *dns.CloudflareManager", manager)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want suffix discovery requests", requests)
 	}
 }
 

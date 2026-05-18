@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -420,6 +421,142 @@ func TestAssignInstanceTransitionsAndWaitingForIP(t *testing.T) {
 	}
 }
 
+func TestListDNSCandidatesReturnsWaitingSessionsWithDomainAndIP(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	ready := createWaitingForDNS(t, ctx, repo, "Ready DNS", "ready-dns", "2026-04-24T12:00:00.000000000Z")
+	missingIP, err := repo.CreateSession(ctx, CreateInput{Title: "Missing IP", Slug: "missing-ip", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
+	if err != nil {
+		t.Fatalf("CreateSession(missing ip) error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `update sessions set status = 'waiting_for_dns', public_ip = null, updated_at = '2026-04-24T11:00:00.000000000Z' where id = ?`, missingIP.Session.ID); err != nil {
+		t.Fatalf("seed missing ip: %v", err)
+	}
+	missingDomain, err := repo.CreateSession(ctx, CreateInput{Title: "Missing Domain", Slug: "missing-domain", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image"})
+	if err != nil {
+		t.Fatalf("CreateSession(missing domain) error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `update sessions set status = 'waiting_for_dns', public_ip = '203.0.113.20', updated_at = '2026-04-24T10:00:00.000000000Z' where id = ?`, missingDomain.Session.ID); err != nil {
+		t.Fatalf("seed missing domain: %v", err)
+	}
+
+	candidates, err := repo.ListDNSCandidates(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListDNSCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != ready.Session.ID {
+		t.Fatalf("candidates = %+v", candidates)
+	}
+}
+
+func TestMarkDNSConfiguredClearsErrorAndAppendsMetadata(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created := createWaitingForDNS(t, ctx, repo, "DNS Configured", "dns-configured", "2026-04-24T12:00:00.000000000Z")
+	if _, err := db.ExecContext(ctx, `update sessions set last_error = 'old dns error', last_error_at = updated_at, last_error_phase = 'dns', dns_attempts = 2 where id = ?`, created.Session.ID); err != nil {
+		t.Fatalf("seed dns error: %v", err)
+	}
+	repo.now = func() time.Time { return time.Date(2026, 4, 24, 17, 0, 0, 0, time.UTC) }
+
+	changed, err := repo.MarkDNSConfigured(ctx, created.Session.ID, "dns_123", DNSConfiguredMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10", Operation: "created", ZoneID: "zone_123"})
+	if err != nil || !changed {
+		t.Fatalf("MarkDNSConfigured() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "waiting_for_dns" || detail.Session.DNSRecordID == nil || *detail.Session.DNSRecordID != "dns_123" || detail.Session.LastError != nil || detail.Session.LastErrorAt != nil || detail.Session.LastErrorPhase != nil {
+		t.Fatalf("session after dns configured = %+v", detail.Session)
+	}
+	last := detail.Events[len(detail.Events)-1]
+	if last.Type != "dns.configured" || last.MetadataJSON == nil {
+		t.Fatalf("last event = %+v", last)
+	}
+	metadata := map[string]string{}
+	if err := json.Unmarshal([]byte(*last.MetadataJSON), &metadata); err != nil {
+		t.Fatalf("metadata json: %v", err)
+	}
+	if metadata["dns_record_id"] != "dns_123" || metadata["operation"] != "created" || metadata["zone_id"] != "zone_123" {
+		t.Fatalf("metadata = %+v", metadata)
+	}
+}
+
+func TestMarkDNSFailedIncrementsAttemptsAndKeepsWaiting(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created := createWaitingForDNS(t, ctx, repo, "DNS Failed", "dns-failed", "2026-04-24T12:00:00.000000000Z")
+	repo.now = func() time.Time { return time.Date(2026, 4, 24, 17, 30, 0, 0, time.UTC) }
+
+	changed, err := repo.MarkDNSFailed(ctx, created.Session.ID, errors.New("cloudflare unavailable"), DNSFailureMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10", Operation: "ensure"})
+	if err != nil || !changed {
+		t.Fatalf("MarkDNSFailed() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "waiting_for_dns" || detail.Session.DNSAttempts != 1 || detail.Session.LastError == nil || *detail.Session.LastError != "cloudflare unavailable" || detail.Session.LastErrorPhase == nil || *detail.Session.LastErrorPhase != "dns" {
+		t.Fatalf("session after dns failed = %+v", detail.Session)
+	}
+	last := detail.Events[len(detail.Events)-1]
+	if last.Type != "dns.failed" || last.MetadataJSON == nil || !strings.Contains(*last.MetadataJSON, "cloudflare unavailable") {
+		t.Fatalf("last event = %+v", last)
+	}
+}
+
+func TestMarkDNSDeletedClearsRecordIDAndAppendsEvent(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created := createWaitingForDNS(t, ctx, repo, "DNS Deleted", "dns-deleted", "2026-04-24T12:00:00.000000000Z")
+	if changed, err := repo.MarkDNSConfigured(ctx, created.Session.ID, "dns_delete", DNSConfiguredMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10", Operation: "created"}); err != nil || !changed {
+		t.Fatalf("MarkDNSConfigured() changed=%v error=%v", changed, err)
+	}
+
+	changed, err := repo.MarkDNSDeleted(ctx, created.Session.ID, DNSDeletedMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10", DNSRecordID: "dns_delete", Operation: "deleted"})
+	if err != nil || !changed {
+		t.Fatalf("MarkDNSDeleted() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.DNSRecordID != nil || detail.Events[len(detail.Events)-1].Type != "dns.deleted" {
+		t.Fatalf("session after dns deleted = %+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
+func TestDNSTransitionsNoOpOutsideAllowedStatuses(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+	created, err := repo.CreateSession(ctx, CreateInput{Title: "DNS Noop", Slug: "dns-noop", InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkDNSConfigured(ctx, created.Session.ID, "dns_noop", DNSConfiguredMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10"}); err != nil || changed {
+		t.Fatalf("MarkDNSConfigured() changed=%v error=%v", changed, err)
+	}
+	if changed, err := repo.MarkDNSFailed(ctx, created.Session.ID, errors.New("boom"), DNSFailureMetadata{RoomDomain: *created.Session.RoomDomain, PublicIP: "203.0.113.10"}); err != nil || changed {
+		t.Fatalf("MarkDNSFailed() changed=%v error=%v", changed, err)
+	}
+	if changed, err := repo.MarkDNSDeleted(ctx, created.Session.ID, DNSDeletedMetadata{RoomDomain: *created.Session.RoomDomain}); err != nil || changed {
+		t.Fatalf("MarkDNSDeleted() changed=%v error=%v", changed, err)
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if detail.Session.Status != "created" || detail.Session.DNSRecordID != nil || detail.Session.DNSAttempts != 0 || len(detail.Events) != 1 {
+		t.Fatalf("unexpected noop state = %+v events=%+v", detail.Session, detail.Events)
+	}
+}
+
 func TestForceDestroyLifecycle(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
@@ -723,6 +860,31 @@ func equalStringPtr(a *string, b *string) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+func createWaitingForDNS(t *testing.T, ctx context.Context, repo *Repository, title string, slug string, updatedAt string) CreateResult {
+	t.Helper()
+	created, err := repo.CreateSession(ctx, CreateInput{Title: title, Slug: slug, InstanceRegion: "nyc3", InstanceSize: "s-1vcpu-1gb", ImageID: "image", SessionsBaseDomain: "sessions.example.com"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if changed, err := repo.MarkProvisioningStarted(ctx, created.Session.ID); err != nil || !changed {
+		t.Fatalf("MarkProvisioningStarted() changed=%v error=%v", changed, err)
+	}
+	if assignment, err := repo.AssignInstance(ctx, created.Session.ID, "123", "203.0.113.10", false); err != nil || !assignment.Changed {
+		t.Fatalf("AssignInstance() assignment=%+v error=%v", assignment, err)
+	}
+	if updatedAt != "" {
+		if _, err := repo.db.ExecContext(ctx, `update sessions set updated_at = ? where id = ?`, updatedAt, created.Session.ID); err != nil {
+			t.Fatalf("set updated_at: %v", err)
+		}
+	}
+	detail, err := repo.GetSession(ctx, created.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	created.Session = detail.Session
+	return created
 }
 
 func openSessionTestDB(t *testing.T, ctx context.Context) *sql.DB {

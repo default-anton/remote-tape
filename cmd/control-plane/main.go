@@ -15,6 +15,7 @@ import (
 	"github.com/default-anton/remote-tape/internal/config"
 	"github.com/default-anton/remote-tape/internal/controlui"
 	"github.com/default-anton/remote-tape/internal/database"
+	"github.com/default-anton/remote-tape/internal/dns"
 	"github.com/default-anton/remote-tape/internal/provisioning"
 	"github.com/default-anton/remote-tape/internal/reconciler"
 	"github.com/default-anton/remote-tape/internal/server"
@@ -77,6 +78,11 @@ func run(ctx context.Context) int {
 		logger.ErrorContext(ctx, "digitalocean provisioner initialization failed", "error", err)
 		return 1
 	}
+	dnsManager, err := newDNSManager(ctx, cfg)
+	if err != nil {
+		logger.ErrorContext(ctx, "cloudflare dns initialization failed", "error", err)
+		return 1
+	}
 
 	listener, err := net.Listen("tcp", cfg.General.HTTPAddr)
 	if err != nil {
@@ -103,7 +109,7 @@ func run(ctx context.Context) int {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	rec := reconciler.New(sessionRepo, provisioner, logger, reconciler.Options{Interval: cfg.Provisioning.ReconcileInterval})
+	rec := reconciler.New(sessionRepo, provisioner, dnsManager, logger, reconciler.Options{Interval: cfg.Provisioning.ReconcileInterval, SessionsBaseDomain: cfg.General.SessionsBaseDomain})
 	reconcileCtx, stopReconciler := context.WithCancel(ctx)
 	reconcilerDone := make(chan struct{})
 	go func() {
@@ -150,6 +156,29 @@ func run(ctx context.Context) int {
 		logger.InfoContext(ctx, "control plane stopped")
 		return 0
 	}
+}
+
+func newDNSManager(ctx context.Context, cfg config.Config) (dns.Manager, error) {
+	return newDNSManagerWithAPI(ctx, cfg, "", nil)
+}
+
+func newDNSManagerWithAPI(ctx context.Context, cfg config.Config, apiBaseURL string, client *http.Client) (dns.Manager, error) {
+	if !cfg.Security.CloudflareAPIToken.Set() {
+		return dns.DisabledManager{}, nil
+	}
+	manager, err := dns.NewCloudflareManager(dns.CloudflareConfig{
+		APIToken:   string(cfg.Security.CloudflareAPIToken),
+		BaseDomain: cfg.General.SessionsBaseDomain,
+		APIBaseURL: apiBaseURL,
+		HTTPClient: client,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := manager.Validate(ctx); err != nil {
+		return nil, err
+	}
+	return manager, nil
 }
 
 func newAuthManager(cfg config.Config, logger *slog.Logger) (*auth.Manager, error) {

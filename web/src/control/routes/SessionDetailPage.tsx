@@ -42,6 +42,7 @@ export function SessionDetailPage() {
 function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSessionResponse }) {
   const session = detail.session;
   const hasRuntime = Boolean(session.instance_id || session.public_ip);
+  const dnsState = dnsStateLabel(session);
   const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
   const canForceDestroy = ["provisioning", "waiting_for_dns", "failed"].includes(session.status);
   const [confirmation, setConfirmation] = useState("");
@@ -116,9 +117,11 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
             "—"
           )}
         </Info>
-        <Info label="Room domain">{domainFor(session)}</Info>
+        <Info label="Opaque room DNS target">{domainFor(session)}</Info>
         <Info label="Slug">{session.slug}</Info>
+        <Info label="DNS state">{dnsState}</Info>
         <Info label="DNS record ID">{value(session.dns_record_id)}</Info>
+        <Info label="DNS attempts">{session.dns_attempts}</Info>
         <Info label="Provision attempts">{session.provision_attempts}</Info>
         <Info label="Created">{formatDateTime(session.created_at)}</Info>
       </section>
@@ -202,11 +205,16 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
               <HealthCard
                 title="DNS"
                 icon="◎"
-                statusLabel={session.dns_record_id ? "Configured" : "Pending"}
+                statusLabel={dnsState}
                 rows={[
-                  ["Domain", value(session.room_domain)],
-                  ["A record", value(session.public_ip)],
+                  ["Opaque room DNS target", value(session.room_domain)],
+                  ["A target", value(session.public_ip)],
+                  ["Record ID", value(session.dns_record_id)],
                   ["TTL", session.dns_record_id ? "60s" : "—"],
+                  [
+                    "Last DNS error",
+                    session.last_error_phase === "dns" ? value(session.last_error) : "—",
+                  ],
                 ]}
               />
             </>
@@ -217,6 +225,12 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
       </div>
     </>
   );
+}
+
+function dnsStateLabel(session: Session) {
+  if (session.last_error_phase === "dns") return "Error";
+  if (session.dns_record_id) return "Configured";
+  return "Pending";
 }
 
 function Info({ label, children }: { label: string; children: ReactNode }) {
@@ -272,7 +286,7 @@ function ProvisioningDiagnostics({ session }: { session: Session }) {
         <strong>Not provisioned</strong>
       </div>
       <div className="health-row">
-        <span>Room domain</span>
+        <span>Opaque room DNS target</span>
         <strong>{value(session.room_domain)}</strong>
       </div>
     </section>

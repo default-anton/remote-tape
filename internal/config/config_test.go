@@ -42,6 +42,28 @@ func TestReconcileIntervalMustBePositive(t *testing.T) {
 	}
 }
 
+func TestDevelopmentConfigWithoutCloudflareTokenIsValid(t *testing.T) {
+	cfg := validConfig()
+	cfg.Security.CloudflareAPIToken = ""
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestProductionConfigWithoutCloudflareTokenIsInvalid(t *testing.T) {
+	cfg := validConfig()
+	cfg.General.Environment = EnvironmentProduction
+	cfg.General.ControlPlaneURL = "https://control.example.com"
+	cfg.General.SessionsBaseDomain = "sessions.example.com"
+	cfg.Security.CloudflareAPIToken = ""
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "REMOTE_TAPE_CLOUDFLARE_API_TOKEN") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
 func TestProductionConfigWithoutPasswordHashIsInvalid(t *testing.T) {
 	cfg := validConfig()
 	cfg.General.Environment = EnvironmentProduction
@@ -131,6 +153,7 @@ func validConfig() Config {
 		Security: SecuritySettings{
 			AdminPasswordHash:          "$2a$10$Y9JdDULWeDYyi7vG2dSAf.KExPZ5RIZX.38y93Stah1DzqleV5E7.",
 			DigitalOceanAPIToken:       "dop_v1_test",
+			CloudflareAPIToken:         "cf_test",
 			CookieAuthKey:              "0123456789abcdef0123456789abcdef",
 			CookieEncryptionKey:        "0123456789abcdef0123456789abcdef",
 			AdminCookieSessionDuration: 7 * 24 * time.Hour,

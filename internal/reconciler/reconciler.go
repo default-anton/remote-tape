@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/default-anton/remote-tape/internal/dns"
 	"github.com/default-anton/remote-tape/internal/provisioning"
 	"github.com/default-anton/remote-tape/internal/session"
 )
@@ -17,25 +19,32 @@ const (
 )
 
 type Reconciler struct {
-	repo        provisioningStore
-	provisioner sessionServerManager
-	logger      *slog.Logger
-	interval    time.Duration
-	batchSize   int
+	repo               store
+	provisioner        sessionServerManager
+	dnsManager         dns.Manager
+	logger             *slog.Logger
+	interval           time.Duration
+	batchSize          int
+	sessionsBaseDomain string
 }
 
 type Options struct {
-	Interval  time.Duration
-	BatchSize int
+	Interval           time.Duration
+	BatchSize          int
+	SessionsBaseDomain string
 }
 
-type provisioningStore interface {
+type store interface {
 	ListProvisioningCandidates(ctx context.Context, limit int) ([]session.Session, error)
 	ListProvisioningSessions(ctx context.Context, limit int) ([]session.Session, error)
+	ListDNSCandidates(ctx context.Context, limit int) ([]session.Session, error)
 	ListTearingDownSessions(ctx context.Context, limit int) ([]session.Session, error)
 	MarkProvisioningStarted(ctx context.Context, sessionID string) (bool, error)
 	AssignInstance(ctx context.Context, sessionID string, instanceID string, publicIP string, adopted bool) (session.InstanceAssignmentResult, error)
 	MarkProvisioningFailed(ctx context.Context, sessionID string, cause error) (bool, error)
+	MarkDNSConfigured(ctx context.Context, sessionID string, dnsRecordID string, metadata session.DNSConfiguredMetadata) (bool, error)
+	MarkDNSFailed(ctx context.Context, sessionID string, cause error, metadata session.DNSFailureMetadata) (bool, error)
+	MarkDNSDeleted(ctx context.Context, sessionID string, metadata session.DNSDeletedMetadata) (bool, error)
 	MarkForceDestroyed(ctx context.Context, sessionID string, instanceID string) (bool, error)
 	MarkForceDestroyFailed(ctx context.Context, sessionID string, cause error) (bool, error)
 }
@@ -45,11 +54,11 @@ type sessionServerManager interface {
 	provisioning.Destroyer
 }
 
-func New(repo *session.Repository, provisioner sessionServerManager, logger *slog.Logger, opts Options) *Reconciler {
-	return newReconciler(repo, provisioner, logger, opts)
+func New(repo *session.Repository, provisioner sessionServerManager, dnsManager dns.Manager, logger *slog.Logger, opts Options) *Reconciler {
+	return newReconciler(repo, provisioner, dnsManager, logger, opts)
 }
 
-func newReconciler(repo provisioningStore, provisioner sessionServerManager, logger *slog.Logger, opts Options) *Reconciler {
+func newReconciler(repo store, provisioner sessionServerManager, dnsManager dns.Manager, logger *slog.Logger, opts Options) *Reconciler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -59,7 +68,18 @@ func newReconciler(repo provisioningStore, provisioner sessionServerManager, log
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
-	return &Reconciler{repo: repo, provisioner: provisioner, logger: logger, interval: opts.Interval, batchSize: opts.BatchSize}
+	if dnsManager == nil {
+		dnsManager = dns.DisabledManager{}
+	}
+	return &Reconciler{
+		repo:               repo,
+		provisioner:        provisioner,
+		dnsManager:         dnsManager,
+		logger:             logger,
+		interval:           opts.Interval,
+		batchSize:          opts.BatchSize,
+		sessionsBaseDomain: opts.SessionsBaseDomain,
+	}
 }
 
 func (r *Reconciler) Run(ctx context.Context) {
@@ -127,11 +147,79 @@ func (r *Reconciler) Step(ctx context.Context) error {
 		}
 	}
 
+	dnsCandidates, err := r.repo.ListDNSCandidates(ctx, r.batchSize)
+	if err != nil {
+		return errors.Join(errors.Join(errs...), err)
+	}
+	for _, s := range dnsCandidates {
+		if s.RoomDomain == nil || s.PublicIP == nil {
+			continue
+		}
+		input := dns.EnsureARecordInput{
+			SessionID:   s.ID,
+			RoomDomain:  *s.RoomDomain,
+			PublicIP:    *s.PublicIP,
+			DNSRecordID: stringValue(s.DNSRecordID),
+			BaseDomain:  r.sessionsBaseDomain,
+		}
+		result, err := r.dnsManager.EnsureARecord(ctx, input)
+		if err != nil {
+			zoneID := dns.ZoneIDFromError(err)
+			metadata := session.DNSFailureMetadata{
+				RoomDomain:  *s.RoomDomain,
+				PublicIP:    *s.PublicIP,
+				DNSRecordID: stringValue(s.DNSRecordID),
+				Operation:   "ensure",
+				ZoneID:      zoneID,
+			}
+			r.logger.ErrorContext(ctx, "dns provisioning failed", "session_id", s.ID, "room_domain", *s.RoomDomain, "public_ip", *s.PublicIP, "zone_id", zoneID, "dns_record_id", stringValue(s.DNSRecordID), "operation", "ensure", "error", err)
+			if _, markErr := r.repo.MarkDNSFailed(ctx, s.ID, err, metadata); markErr != nil {
+				errs = append(errs, fmt.Errorf("mark dns failed for session %s: %w", s.ID, markErr))
+			}
+			errs = append(errs, fmt.Errorf("ensure dns for session %s: %w", s.ID, err))
+			continue
+		}
+		metadata := session.DNSConfiguredMetadata{
+			RoomDomain:  result.Name,
+			PublicIP:    result.Content,
+			DNSRecordID: result.ID,
+			Operation:   result.Operation,
+			ZoneID:      result.ZoneID,
+		}
+		if _, err := r.repo.MarkDNSConfigured(ctx, s.ID, result.ID, metadata); err != nil {
+			errs = append(errs, fmt.Errorf("mark dns configured for session %s: %w", s.ID, err))
+			continue
+		}
+		r.logger.InfoContext(ctx, "dns configured", "session_id", s.ID, "room_domain", result.Name, "public_ip", result.Content, "zone_id", result.ZoneID, "dns_record_id", result.ID, "operation", result.Operation)
+	}
+
 	tearingDownSessions, err := r.repo.ListTearingDownSessions(ctx, r.batchSize)
 	if err != nil {
 		return errors.Join(errors.Join(errs...), err)
 	}
 	for _, s := range tearingDownSessions {
+		roomDomain := stringValue(s.RoomDomain)
+		dnsRecordID := stringValue(s.DNSRecordID)
+		if strings.TrimSpace(roomDomain) != "" {
+			input := dns.DeleteRecordInput{SessionID: s.ID, RoomDomain: roomDomain, DNSRecordID: dnsRecordID, BaseDomain: r.sessionsBaseDomain}
+			if err := r.dnsManager.DeleteRecord(ctx, input); err != nil {
+				zoneID := dns.ZoneIDFromError(err)
+				metadata := session.DNSFailureMetadata{RoomDomain: roomDomain, PublicIP: stringValue(s.PublicIP), DNSRecordID: dnsRecordID, Operation: "delete", ZoneID: zoneID}
+				r.logger.ErrorContext(ctx, "dns deletion failed", "session_id", s.ID, "room_domain", roomDomain, "zone_id", zoneID, "dns_record_id", dnsRecordID, "operation", "delete", "error", err)
+				if _, markErr := r.repo.MarkDNSFailed(ctx, s.ID, err, metadata); markErr != nil {
+					errs = append(errs, fmt.Errorf("mark dns delete failed for session %s: %w", s.ID, markErr))
+				}
+				errs = append(errs, fmt.Errorf("delete dns for session %s: %w", s.ID, err))
+				continue
+			}
+			metadata := session.DNSDeletedMetadata{RoomDomain: roomDomain, PublicIP: stringValue(s.PublicIP), DNSRecordID: dnsRecordID, Operation: "deleted"}
+			if _, err := r.repo.MarkDNSDeleted(ctx, s.ID, metadata); err != nil {
+				errs = append(errs, fmt.Errorf("mark dns deleted for session %s: %w", s.ID, err))
+				continue
+			}
+			r.logger.InfoContext(ctx, "dns deleted", "session_id", s.ID, "room_domain", roomDomain, "dns_record_id", dnsRecordID, "operation", "delete")
+		}
+
 		result, err := r.provisioner.ForceDestroySessionServer(ctx, s)
 		if err != nil {
 			r.logger.ErrorContext(ctx, "session server force destroy failed", "session_id", s.ID, "error", err)
@@ -156,4 +244,11 @@ func (r *Reconciler) runStep(ctx context.Context) {
 	if err := r.Step(ctx); err != nil {
 		r.logger.ErrorContext(ctx, "reconciler step failed", "error", err)
 	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

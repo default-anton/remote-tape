@@ -8,6 +8,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,6 +60,31 @@ type MachineTokenIssue struct {
 	SessionID string
 	Token     string
 	EventID   int64
+}
+
+type DNSConfiguredMetadata struct {
+	RoomDomain  string `json:"room_domain"`
+	PublicIP    string `json:"public_ip"`
+	DNSRecordID string `json:"dns_record_id"`
+	Operation   string `json:"operation"`
+	ZoneID      string `json:"zone_id,omitempty"`
+}
+
+type DNSFailureMetadata struct {
+	RoomDomain  string `json:"room_domain"`
+	PublicIP    string `json:"public_ip"`
+	DNSRecordID string `json:"dns_record_id,omitempty"`
+	Operation   string `json:"operation"`
+	ZoneID      string `json:"zone_id,omitempty"`
+	Error       string `json:"error"`
+}
+
+type DNSDeletedMetadata struct {
+	RoomDomain  string `json:"room_domain"`
+	PublicIP    string `json:"public_ip,omitempty"`
+	DNSRecordID string `json:"dns_record_id,omitempty"`
+	Operation   string `json:"operation"`
+	ZoneID      string `json:"zone_id,omitempty"`
 }
 
 type Session struct {
@@ -488,6 +514,137 @@ func (r *Repository) ListProvisioningSessions(ctx context.Context, limit int) ([
 
 func (r *Repository) ListTearingDownSessions(ctx context.Context, limit int) ([]Session, error) {
 	return r.listSessionsByStatus(ctx, "tearing_down", limit, "tearing down session")
+}
+
+func (r *Repository) ListDNSCandidates(ctx context.Context, limit int) ([]Session, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("%w: dns candidate limit must be positive", ErrInvalidInput)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+select `+sessionColumns+`
+from sessions
+where status = 'waiting_for_dns'
+  and room_domain is not null
+  and public_ip is not null
+order by updated_at asc, id asc
+limit ?;
+`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list dns candidates: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]Session, 0)
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list dns candidates: %w", err)
+	}
+	return sessions, nil
+}
+
+func (r *Repository) MarkDNSConfigured(ctx context.Context, sessionID string, dnsRecordID string, metadata DNSConfiguredMetadata) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	dnsRecordID = strings.TrimSpace(dnsRecordID)
+	if sessionID == "" || dnsRecordID == "" {
+		return false, ErrNotFound
+	}
+	metadata.DNSRecordID = dnsRecordID
+	if metadata.Operation == "" {
+		metadata.Operation = "configured"
+	}
+	metadataJSON, err := marshalEventMetadata(metadata)
+	if err != nil {
+		return false, err
+	}
+	now := formatSQLiteTime(r.now())
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark dns configured",
+		query: `
+update sessions
+set dns_record_id = ?,
+    last_error = null,
+    last_error_at = null,
+    last_error_phase = null,
+    updated_at = ?
+where id = ?
+  and status = 'waiting_for_dns'
+  and (dns_record_id is not ? or ? != 'adopted' or last_error is not null or last_error_at is not null or last_error_phase is not null);
+`,
+		args:         []any{dnsRecordID, now, sessionID, dnsRecordID, metadata.Operation},
+		eventType:    "dns.configured",
+		eventMessage: "DNS configured",
+		metadataJSON: metadataJSON,
+		at:           now,
+	})
+}
+
+func (r *Repository) MarkDNSFailed(ctx context.Context, sessionID string, cause error, metadata DNSFailureMetadata) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	message := capErrorMessage(cause)
+	metadata.Error = message
+	if metadata.Operation == "" {
+		metadata.Operation = "ensure"
+	}
+	metadataJSON, err := marshalEventMetadata(metadata)
+	if err != nil {
+		return false, err
+	}
+	now := formatSQLiteTime(r.now())
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark dns failed",
+		query: `
+update sessions
+set dns_attempts = dns_attempts + 1,
+    last_error = ?,
+    last_error_at = ?,
+    last_error_phase = 'dns',
+    updated_at = ?
+where id = ? and status in ('waiting_for_dns', 'teardown_pending', 'tearing_down');
+`,
+		args:         []any{message, now, now, sessionID},
+		eventType:    "dns.failed",
+		eventMessage: "DNS operation failed",
+		metadataJSON: metadataJSON,
+		at:           now,
+	})
+}
+
+func (r *Repository) MarkDNSDeleted(ctx context.Context, sessionID string, metadata DNSDeletedMetadata) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ErrNotFound
+	}
+	if metadata.Operation == "" {
+		metadata.Operation = "deleted"
+	}
+	metadataJSON, err := marshalEventMetadata(metadata)
+	if err != nil {
+		return false, err
+	}
+	now := formatSQLiteTime(r.now())
+	return r.execSessionTransition(ctx, sessionID, sessionTransition{
+		operation: "mark dns deleted",
+		query: `
+update sessions
+set dns_record_id = null,
+    updated_at = ?
+where id = ? and status in ('waiting_for_dns', 'teardown_pending', 'tearing_down');
+`,
+		args:         []any{now, sessionID},
+		eventType:    "dns.deleted",
+		eventMessage: "DNS record deleted",
+		metadataJSON: metadataJSON,
+		at:           now,
+	})
 }
 
 func (r *Repository) MarkProvisioningStarted(ctx context.Context, sessionID string) (bool, error) {
@@ -952,6 +1109,7 @@ type sessionTransition struct {
 	args         []any
 	eventType    string
 	eventMessage string
+	metadataJSON *string
 	at           string
 }
 
@@ -973,13 +1131,22 @@ func (r *Repository) execSessionTransition(ctx context.Context, sessionID string
 	if changed == 0 {
 		return false, nil
 	}
-	if _, err := appendEvent(ctx, tx, sessionID, transition.eventType, transition.eventMessage, nil, transition.at); err != nil {
+	if _, err := appendEvent(ctx, tx, sessionID, transition.eventType, transition.eventMessage, transition.metadataJSON, transition.at); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit %s: %w", transition.operation, err)
 	}
 	return true, nil
+}
+
+func marshalEventMetadata(value any) (*string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal session event metadata: %w", err)
+	}
+	metadata := string(data)
+	return &metadata, nil
 }
 
 func appendEvent(ctx context.Context, q queryer, sessionID string, eventType string, message string, metadataJSON *string, createdAt string) (int64, error) {
