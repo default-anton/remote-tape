@@ -43,8 +43,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
   const session = detail.session;
   const hasRuntime = Boolean(session.instance_id || session.public_ip);
   const dnsState = dnsStateLabel(session);
-  const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
-  const canForceDestroy = ["provisioning", "waiting_for_dns", "failed"].includes(session.status);
+  const actions = sessionActions(session);
   const [confirmation, setConfirmation] = useState("");
   const [forceDestroyOpen, setForceDestroyOpen] = useState(false);
   const forceDestroy = useForceDestroySessionServer({
@@ -61,10 +60,12 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
           </p>
         </div>
         <div className="detail-actions">
-          <button className="button danger" type="button">
-            ⦿ End session
-          </button>
-          {canForceDestroy ? (
+          {actions.showEndSession ? (
+            <button className="button danger" type="button">
+              ⦿ End session
+            </button>
+          ) : null}
+          {actions.canForceDestroy ? (
             <button
               className="button danger"
               type="button"
@@ -73,20 +74,26 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
               Force destroy session server
             </button>
           ) : null}
-          {hasRuntime ? (
+          {actions.showRetryHealthCheck ? (
             <button className="button ghost" type="button">
               ↻ Retry health check
             </button>
           ) : null}
-          {canOpenRoom ? (
+          {actions.canOpenRoom ? (
             <a className="button primary" href={`https://${domainFor(session)}`}>
               ↗ Open room
             </a>
-          ) : (
+          ) : null}
+          {actions.showRoomNotReady ? (
             <button className="button primary" disabled type="button">
               Room not ready
             </button>
-          )}
+          ) : null}
+          {actions.showFailedStatusCopy ? (
+            <p className="muted">
+              Session failed. Review failure details and clean up the server if needed.
+            </p>
+          ) : null}
         </div>
       </div>
       {created ? <CreatedLinks created={created} /> : null}
@@ -225,6 +232,35 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
       </div>
     </>
   );
+}
+
+const FORCE_DESTROY_STATUSES = new Set<SessionStatus>([
+  "provisioning",
+  "waiting_for_dns",
+  "failed",
+]);
+
+type SessionActions = {
+  canForceDestroy: boolean;
+  canOpenRoom: boolean;
+  showEndSession: boolean;
+  showFailedStatusCopy: boolean;
+  showRetryHealthCheck: boolean;
+  showRoomNotReady: boolean;
+};
+
+function sessionActions(session: Session): SessionActions {
+  const isFailed = session.status === "failed";
+  const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
+
+  return {
+    canForceDestroy: FORCE_DESTROY_STATUSES.has(session.status),
+    canOpenRoom,
+    showEndSession: !isFailed,
+    showFailedStatusCopy: isFailed,
+    showRetryHealthCheck: !isFailed && Boolean(session.instance_id || session.public_ip),
+    showRoomNotReady: !isFailed && !canOpenRoom,
+  };
 }
 
 function dnsStateLabel(session: Session) {

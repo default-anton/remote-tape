@@ -295,11 +295,40 @@ describe("control app", () => {
     expect(screen.queryByText("heartbeat")).not.toBeInTheDocument();
   });
 
-  it("renders failed session error details", async () => {
-    renderApp("/sessions/sess_joinable_failed?scenario=failed");
+  it("renders failed session error details and only valid recovery actions", async () => {
+    const session = makeSession({
+      id: "sess_failed_with_runtime",
+      slug: "failed-runtime",
+      title: "Failed with runtime",
+      status: "failed",
+      instance_id: "123456789",
+      public_ip: "203.0.113.10",
+      room_domain: "room-failed-runtime.sessions.localhost",
+      last_error: "instance health check failed",
+      last_error_at: "2026-04-25T10:03:00.000000000Z",
+      last_error_phase: "health_check",
+    });
+    server.use(
+      http.get("/api/sessions/sess_failed_with_runtime", () =>
+        HttpResponse.json(makeDetail({ session })),
+      ),
+    );
 
-    expect(await screen.findByText("instance health check failed")).toBeInTheDocument();
+    renderApp("/sessions/sess_failed_with_runtime");
+
+    expect(await screen.findByRole("heading", { name: "Failure details" })).toBeInTheDocument();
+    expect(screen.getByText("instance health check failed")).toBeInTheDocument();
     expect(screen.getByText("health_check")).toBeInTheDocument();
+    expect(
+      screen.getByText("Lifecycle stopped before successful completion.", { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Force destroy session server" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "⦿ End session" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "↻ Retry health check" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Room not ready" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "↗ Open room" })).not.toBeInTheDocument();
   });
 
   it("renders provisioning attempt visibility on session detail", async () => {
@@ -315,7 +344,10 @@ describe("control app", () => {
     expect(within(eventsCard).queryByText("provisioning.started")).not.toBeInTheDocument();
     expect(within(eventsCard).queryByText("provisioning.failed")).not.toBeInTheDocument();
     expect(screen.getByText("Provision attempts")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Room not ready" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Force destroy session server" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Room not ready" })).not.toBeInTheDocument();
     expect(screen.getByText("Room server")).toBeInTheDocument();
     expect(screen.getByText("Not provisioned")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "↗ Open room" })).not.toBeInTheDocument();
