@@ -9,6 +9,7 @@ import { StatusBadge, statusIcon } from "../components/StatusBadge";
 import {
   isAttentionStatus,
   isJoinRedirectReadyStatus,
+  isTerminalStatus,
   SESSION_LIFECYCLE_STATUSES,
   sessionLifecycleIndex,
   sessionStatusLabel,
@@ -89,11 +90,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
               Room not ready
             </button>
           ) : null}
-          {actions.showFailedStatusCopy ? (
-            <p className="muted">
-              Session failed. Review failure details and clean up the server if needed.
-            </p>
-          ) : null}
+          {actions.statusCopy ? <p className="muted">{actions.statusCopy}</p> : null}
         </div>
       </div>
       {created ? <CreatedLinks created={created} /> : null}
@@ -244,23 +241,49 @@ type SessionActions = {
   canForceDestroy: boolean;
   canOpenRoom: boolean;
   showEndSession: boolean;
-  showFailedStatusCopy: boolean;
   showRetryHealthCheck: boolean;
   showRoomNotReady: boolean;
+  statusCopy: string | null;
 };
 
 function sessionActions(session: Session): SessionActions {
-  const isFailed = session.status === "failed";
-  const canOpenRoom = isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
+  const isTerminal = isTerminalStatus(session.status);
+  const canOpenRoom =
+    !isTerminal && isJoinRedirectReadyStatus(session.status) && Boolean(session.room_domain);
 
   return {
     canForceDestroy: FORCE_DESTROY_STATUSES.has(session.status),
     canOpenRoom,
-    showEndSession: !isFailed,
-    showFailedStatusCopy: isFailed,
-    showRetryHealthCheck: !isFailed && Boolean(session.instance_id || session.public_ip),
-    showRoomNotReady: !isFailed && !canOpenRoom,
+    showEndSession: !isTerminal,
+    showRetryHealthCheck: !isTerminal && Boolean(session.instance_id || session.public_ip),
+    showRoomNotReady: !isTerminal && !canOpenRoom,
+    statusCopy: terminalStatusCopy(session.status),
   };
+}
+
+function terminalStatusCopy(status: SessionStatus): string | null {
+  switch (status) {
+    case "failed":
+      return "Session failed. Review failure details and clean up the server if needed.";
+    case "ended":
+      return null;
+    case "created":
+    case "provisioning":
+    case "waiting_for_dns":
+    case "ready":
+    case "active":
+    case "finalizing":
+    case "awaiting_manual_download":
+    case "teardown_pending":
+    case "tearing_down":
+      return null;
+    default:
+      return exhaustiveSessionActionStatus(status);
+  }
+}
+
+function exhaustiveSessionActionStatus(status: never): never {
+  throw new Error(`Unhandled session action status: ${status}`);
 }
 
 function dnsStateLabel(session: Session) {

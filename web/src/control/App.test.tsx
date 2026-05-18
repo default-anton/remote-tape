@@ -295,6 +295,37 @@ describe("control app", () => {
     expect(screen.queryByText("heartbeat")).not.toBeInTheDocument();
   });
 
+  it("hides live room controls for ended sessions", async () => {
+    const session = makeSession({
+      id: "sess_ended_with_runtime",
+      slug: "ended-runtime",
+      title: "Ended with runtime",
+      status: "ended",
+      instance_id: "123456789",
+      public_ip: "203.0.113.10",
+      room_domain: "room-ended-runtime.sessions.localhost",
+    });
+    server.use(
+      http.get("/api/sessions/sess_ended_with_runtime", () =>
+        HttpResponse.json(makeDetail({ session })),
+      ),
+    );
+
+    renderApp("/sessions/sess_ended_with_runtime");
+
+    expect(await screen.findByRole("heading", { name: "Ended with runtime" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Session ended. No live room controls are available."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "⦿ End session" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "↻ Retry health check" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Room not ready" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "↗ Open room" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Force destroy session server" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders failed session error details and only valid recovery actions", async () => {
     const session = makeSession({
       id: "sess_failed_with_runtime",
