@@ -57,7 +57,7 @@ export function Shell({
   return (
     <div className="shell">
       <aside className="sidebar">
-        <Logo />
+        <Logo to="/sessions" />
         <nav className="nav">
           <NavLink to="/sessions" active={active === "sessions"} icon="activity">
             Sessions
@@ -134,9 +134,17 @@ function NavLink({
   );
 }
 
-export function Logo({ large = false, centered = false }: { large?: boolean; centered?: boolean }) {
-  return (
-    <div className={`logo ${large ? "large" : ""} ${centered ? "centered" : ""}`}>
+export function Logo({
+  large = false,
+  centered = false,
+  to,
+}: {
+  large?: boolean;
+  centered?: boolean;
+  to?: string;
+}) {
+  const contents = (
+    <>
       <span className="logo-mark" aria-hidden="true">
         <span />
         <span />
@@ -145,6 +153,17 @@ export function Logo({ large = false, centered = false }: { large?: boolean; cen
         <strong>remote-tape</strong>
         <small>remote podcast recorder</small>
       </div>
-    </div>
+    </>
   );
+  const className = `logo ${large ? "large" : ""} ${centered ? "centered" : ""}`;
+
+  if (to) {
+    return (
+      <Link aria-label="remote-tape sessions" className={className} to={to}>
+        {contents}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{contents}</div>;
 }

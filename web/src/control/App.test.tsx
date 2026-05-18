@@ -48,6 +48,15 @@ describe("control app", () => {
     expect(screen.getByText(/^room-[a-z2-7]{26}\.sessions\.localhost$/)).toBeInTheDocument();
   });
 
+  it("navigates to sessions when the sidebar logo is clicked", async () => {
+    renderApp("/diagnostics");
+
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "remote-tape sessions" }));
+
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+  });
+
   it("renders multiple lifecycle statuses in the sessions list", async () => {
     renderApp("/sessions?scenario=mixed&page_size=25");
 
