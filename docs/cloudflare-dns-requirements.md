@@ -152,6 +152,170 @@ Slice 7 ready callback -> ready
   - DNS failure persists retryable error and continues processing other sessions
   - second step is idempotent
 
+## Implementation plan
+
+Feedback loop: make the DNS behavior testable without Cloudflare first. Unit-test repository transitions with SQLite, test the Cloudflare manager against `httptest.Server`, and test reconciler behavior with fakes. Only after those pass, run one live-token smoke demo that creates a session and verifies the authoritative Cloudflare API state; public resolver lookup is a demo-only check.
+
+### 1. Lock the domain model and repository transitions
+
+Current schema already has `room_domain`, `dns_record_id`, `public_ip`, `dns_attempts`, and shared error fields. Keep the schema unchanged unless implementation exposes a real missing invariant.
+
+Add repository methods in `internal/session/repository.go`:
+
+- `ListDNSCandidates(ctx, limit)`: `status = 'waiting_for_dns' and room_domain is not null and public_ip is not null`, ordered by `updated_at asc, id asc`, bounded by `limit`.
+- `MarkDNSConfigured(ctx, sessionID, dnsRecordID string, metadata DNSConfiguredMetadata)`: update only `waiting_for_dns`; set `dns_record_id`, clear `last_error*`, update `updated_at`, append `dns.configured` with JSON metadata, and keep status unchanged.
+- `MarkDNSFailed(ctx, sessionID string, cause error, metadata DNSFailureMetadata)`: update only `waiting_for_dns`; increment `dns_attempts`, set `last_error`, `last_error_at`, `last_error_phase = 'dns'`, update `updated_at`, append `dns.failed`, and keep status unchanged.
+- `MarkDNSDeleted(ctx, sessionID string, metadata DNSDeletedMetadata)`: clear `dns_record_id`, update `updated_at`, append `dns.deleted`; allow `waiting_for_dns`, `tearing_down`, and later `teardown_pending` so force-destroy and Slice 10 share one path.
+
+Use small typed metadata structs in the `session` package, marshal inside repository methods, and cap persisted error strings with the existing cap helper. Required event metadata keys: `room_domain`, `public_ip`, `dns_record_id`, `operation`; include `zone_id` when known and `error` on failure. Keep tokens and API credentials out of metadata.
+
+Repository tests are the first gate:
+
+- candidate listing excludes missing `room_domain`/`public_ip`
+- configured persists ID, clears DNS errors, appends metadata, keeps `waiting_for_dns`
+- failure increments `dns_attempts`, sets phase `dns`, appends metadata, keeps `waiting_for_dns`
+- deletion clears ID and appends metadata
+- transitions no-op outside allowed statuses
+
+### 2. Add `internal/dns` with a narrow Cloudflare manager
+
+Create `internal/dns` with:
+
+```go
+type Manager interface {
+	EnsureARecord(ctx context.Context, input EnsureARecordInput) (RecordResult, error)
+	DeleteRecord(ctx context.Context, input DeleteRecordInput) error
+}
+
+type EnsureARecordInput struct {
+	SessionID     string
+	RoomDomain    string
+	PublicIP      string
+	DNSRecordID   string
+	BaseDomain    string
+}
+
+type DeleteRecordInput struct {
+	SessionID   string
+	RoomDomain  string
+	DNSRecordID string
+}
+
+type RecordResult struct {
+	ID        string
+	ZoneID    string
+	Name      string
+	Content   string
+	Operation string // created, adopted, updated, repaired
+}
+```
+
+Prefer `net/http` over a SDK. The required Cloudflare v4 calls are small and easier to fake directly:
+
+- `GET /client/v4/zones?name=<candidate>` for zone discovery
+- `GET /client/v4/zones/{zoneID}/dns_records?name=<room_domain>` for exact-name lookup
+- `GET /client/v4/zones/{zoneID}/dns_records/{id}` for persisted ID verification
+- `POST /client/v4/zones/{zoneID}/dns_records` to create
+- `PUT /client/v4/zones/{zoneID}/dns_records/{id}` to update
+- `DELETE /client/v4/zones/{zoneID}/dns_records/{id}` to delete
+
+Implement longest-suffix zone discovery by checking suffixes of `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`, longest first. Cache the resolved zone ID/name in the manager after validation. Validate inputs before API calls: DNS name, IPv4 via `net.ParseIP(ip).To4()`, non-empty token, and configured base domain containment.
+
+Record payload for create/update:
+
+```json
+{"type":"A","name":"room-opaque.sessions.example.com","content":"203.0.113.10","ttl":60,"proxied":false}
+```
+
+Adoption/repair rules:
+
+1. If `DNSRecordID` exists, fetch by ID before making any mutation. If the record is exact `A`/name/proxied=false/content=`public_ip`/ttl=60, return `operation=adopted`. If it is exact `A`/name but content, TTL, or `proxied` differs, update it to `public_ip`, ttl=60, `proxied=false`. If it is a different name or type, treat the ID as stale and fall back to exact-name lookup only if safe; include the stale ID in the error when ambiguity exists.
+2. Exact-name lookup must classify all returned records, not just eligible records. Any non-`A` exact-name record is a hard conflict. Multiple exact-name records are a hard conflict. One exact-name `A` with wrong IP, wrong TTL, or `proxied=true` is repaired by updating it to `public_ip`, ttl=60, `proxied=false`. One exact-name `A` already matching IP/ttl/proxied is adopted. Zero records creates.
+3. Delete by persisted ID only after first fetching the record and verifying exact name and type `A`. If the fetched ID is a different name or type, fail with an operator-actionable stale-ID conflict rather than deleting it. Treat `404` as stale and fall back to exact-name lookup. Lookup delete follows the same ambiguity rules as ensure: zero records is success, one exact-name DNS-only `A` can be deleted, and any non-`A`, proxied `A`, or multiple exact-name records fail instead of guessing.
+
+Define actionable sentinel-style errors or typed errors for conflicts/configuration so the reconciler can persist useful messages without parsing strings.
+
+DNS manager tests are the second gate. Use `httptest.Server` and assert request method/path/query/body:
+
+- zone discovery uses longest suffix and caches the result
+- creates missing A record with TTL 60 and proxied false
+- adopts existing correct record only when IP, TTL, and proxied mode already match
+- updates wrong-IP, wrong-TTL, or proxied exact-name `A` record
+- errors on multiple exact-name records
+- errors on same-name non-A conflict
+- repairs stale persisted ID via exact-name lookup
+- verifies persisted ID ownership before delete, treats missing delete as success, and refuses ambiguous lookup delete
+- never logs or returns the token
+
+### 3. Wire DNS into the reconciler as a separate phase
+
+Extend `internal/reconciler.Reconciler` to accept a `dns.Manager`. Avoid coupling DigitalOcean provisioning and DNS into one mega-interface; keep repository interfaces explicit.
+
+Recommended `Step` order:
+
+1. claim `created` sessions into `provisioning`
+2. ensure/adopt DigitalOcean instances for `provisioning`
+3. ensure Cloudflare DNS for `waiting_for_dns`
+4. for `tearing_down` sessions with DNS state, delete DNS and call `MarkDNSDeleted`
+5. perform existing force-destroy instance handling
+
+Keep DNS deletion and instance destruction as separate calls and events. Slice 10 can reuse the same delete path for `teardown_pending`; Slice 6 only needs the operation to be correct and safe.
+
+For each DNS candidate, require non-nil `RoomDomain` and `PublicIP` before calling the manager even though the repository filters them. On success call `MarkDNSConfigured`; log `session_id`, `room_domain`, `public_ip`, `zone_id`, `dns_record_id`, and `operation`. On failure call `MarkDNSFailed`, log the same fields plus error, continue to later candidates, and return a joined error from the step.
+
+Do not mark the session `ready`. DNS success leaves it in `waiting_for_dns` for Slice 7.
+
+Reconciler tests are the third gate:
+
+- `waiting_for_dns` calls DNS manager with stored room domain/IP/record ID
+- success persists record ID/event and keeps status `waiting_for_dns`
+- failure persists retryable DNS error and keeps processing other sessions
+- second step with an already configured record is idempotent
+- DNS failures do not stop DigitalOcean teardown processing
+
+### 4. Configuration and startup behavior
+
+Add Cloudflare DNS construction in `cmd/control-plane/main.go` after config load and before starting the reconciler.
+
+Production behavior:
+
+- `REMOTE_TAPE_CLOUDFLARE_API_TOKEN` is required.
+- startup validates that the token can read the zone owning `REMOTE_TAPE_SESSIONS_BASE_DOMAIN`; fail fast if not.
+
+Development behavior:
+
+- keep local startup possible without a Cloudflare token by wiring a manager that returns `cloudflare token missing; set REMOTE_TAPE_CLOUDFLARE_API_TOKEN for live DNS operations` when called.
+- if a token is present, validate it at startup so failures are early and obvious.
+
+Config tests should cover production missing token, development missing token, and invalid sessions base domain. Main tests should cover live manager vs disabled manager selection without performing real HTTP.
+
+### 5. Dashboard/UI updates
+
+The API already exposes `room_domain`, `dns_record_id`, `public_ip`, `dns_attempts`, and error fields. Keep the contract as-is.
+
+Update the control UI only where it improves operator clarity:
+
+- session detail info grid: add DNS attempts and DNS state (`Pending`, `Configured`, `Error`) derived from `dns_record_id` and `last_error_phase`.
+- DNS health card: show room domain, A target, record ID, TTL 60, and last DNS error if present.
+- copy: call `room_domain` an opaque room DNS target; do not imply it is derived from the slug.
+- mock/MSW fixtures: include `waiting_for_dns` with DNS pending, configured, and failed variants.
+
+Run `pnpm --dir web lint`, `format:check`, `typecheck`, `test`, and `build` if UI files change.
+
+### 6. Live acceptance demo
+
+After Go tests pass, run a controlled live smoke with a scoped Cloudflare token and a test zone/subdomain:
+
+1. start the dev control plane with `REMOTE_TAPE_SESSIONS_BASE_DOMAIN` and `REMOTE_TAPE_CLOUDFLARE_API_TOKEN`
+2. create a session
+3. let DigitalOcean provisioning assign a public IPv4
+4. run one reconciler step or wait for the interval
+5. confirm via Cloudflare API that exactly one DNS-only `A` record exists for `room_domain`, content equals `public_ip`, TTL is 60, and `dns_record_id` is persisted
+6. confirm the dashboard shows DNS configured and the timeline has `dns.configured`
+7. optionally run `dig +short <room_domain> A` as resolver propagation smoke only
+
+Do not use public resolver propagation as the correctness gate; the authoritative Cloudflare API state is the gate.
+
 ## Acceptance demo
 
 ```txt
