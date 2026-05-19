@@ -28,7 +28,7 @@ import type {
   JoinResponse,
   SessionsResponse,
 } from "../types";
-import { joinKeys, sessionsKeys, slugKeys } from "./queryKeys";
+import { joinKeys, sessionEventsKeys, sessionsKeys, slugKeys } from "./queryKeys";
 
 const sessionPollIntervalMs = 5_000;
 
@@ -101,12 +101,16 @@ export function useSessionDetail(id: string | undefined) {
 
 export function useSessionEvents(sessionId: string, pageSize = 10) {
   return useInfiniteQuery({
-    queryKey: sessionsKeys.events(sessionId, { pageSize }),
+    queryKey: sessionEventsKeys.list(sessionId, { pageSize }),
     queryFn: ({ pageParam }) => listSessionEvents(sessionId, { page: pageParam, pageSize }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.pagination.page < last.pagination.total_pages ? last.pagination.page + 1 : undefined,
     enabled: Boolean(sessionId),
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -127,7 +131,7 @@ export function useCreateSession(options: CreateSessionOptions = {}) {
     retry: false,
     ...options,
     onSuccess: async (created, variables, onMutateResult, context) => {
-      await queryClient.invalidateQueries({ queryKey: sessionsKeys.all });
+      await queryClient.invalidateQueries({ queryKey: sessionsKeys.lists() });
       queryClient.setQueryData(sessionsKeys.detail(created.session.id), {
         session: created.session,
         access_tokens: [],
@@ -148,7 +152,7 @@ export function useForceDestroySessionServer(options: ForceDestroyOptions = {}) 
     ...options,
     onSuccess: async (detail, variables, onMutateResult, context) => {
       queryClient.setQueryData(sessionsKeys.detail(detail.session.id), detail);
-      await queryClient.invalidateQueries({ queryKey: sessionsKeys.all });
+      await queryClient.invalidateQueries({ queryKey: sessionsKeys.lists() });
       await options.onSuccess?.(detail, variables, onMutateResult, context);
     },
   });

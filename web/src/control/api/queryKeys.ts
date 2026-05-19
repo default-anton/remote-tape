@@ -2,10 +2,15 @@ import type { ListSessionEventsParams, ListSessionsParams } from "./client";
 
 export const sessionsKeys = {
   all: ["sessions"] as const,
-  list: (params?: ListSessionsParams) => [...sessionsKeys.all, "list", params ?? {}] as const,
+  lists: () => [...sessionsKeys.all, "list"] as const,
+  list: (params?: ListSessionsParams) => [...sessionsKeys.lists(), params ?? {}] as const,
   detail: (id: string) => [...sessionsKeys.all, "detail", id] as const,
-  events: (id: string, params?: ListSessionEventsParams) =>
-    [...sessionsKeys.all, "events", id, params ?? {}] as const,
+};
+
+export const sessionEventsKeys = {
+  all: ["session-events"] as const,
+  list: (id: string, params?: ListSessionEventsParams) =>
+    [...sessionEventsKeys.all, id, params ?? {}] as const,
 };
 
 export const slugKeys = {

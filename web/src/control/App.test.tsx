@@ -7,6 +7,7 @@ import {
   sessionDetailRefetchInterval,
   sessionsListRefetchInterval,
 } from "./api/hooks";
+import { sessionEventsKeys, sessionsKeys } from "./api/queryKeys";
 import { isAttentionStatus } from "./domain/sessionStatus";
 import {
   makeAccessToken,
@@ -859,6 +860,12 @@ describe("control app", () => {
 
     expect(screen.getByText("Join link is missing its token.")).toBeInTheDocument();
     expect(requests).toBe(0);
+  });
+
+  it("keeps snapshot event queries out of broad session invalidations", () => {
+    expect(sessionsKeys.lists()).toEqual(["sessions", "list"]);
+    expect(sessionEventsKeys.list("sess_1", { pageSize: 10 })[0]).toBe("session-events");
+    expect(sessionEventsKeys.all[0]).not.toBe(sessionsKeys.all[0]);
   });
 
   it("centralizes polling decisions around non-terminal session statuses", () => {
