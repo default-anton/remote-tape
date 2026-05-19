@@ -63,6 +63,16 @@ export const DetailSchema = z.object({
   events: z.array(EventSchema),
 });
 
+export const SessionEventsResponseSchema = z.object({
+  events: z.array(EventSchema),
+  pagination: z.object({
+    page: z.number(),
+    page_size: z.number(),
+    total: z.number(),
+    total_pages: z.number(),
+  }),
+});
+
 export const ProvisioningOptionsSchema = z.object({
   defaults: z.object({
     region: z.string(),
@@ -172,6 +182,7 @@ export type SlugAvailability = z.infer<typeof SlugAvailabilitySchema>;
 export type AccessToken = z.infer<typeof AccessTokenSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type Detail = z.infer<typeof DetailSchema>;
+export type SessionEventsResponse = z.infer<typeof SessionEventsResponseSchema>;
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type JoinResponse = z.infer<typeof JoinResponseSchema>;

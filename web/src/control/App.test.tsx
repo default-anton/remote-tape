@@ -18,7 +18,7 @@ import {
 } from "./testing/fixtures";
 import { createControlMockApi } from "./testing/handlers";
 import { renderApp } from "./testing/renderApp";
-import { SessionSchema } from "./types";
+import { SessionSchema, type Event } from "./types";
 import { slugify } from "./utils/forms";
 
 const mockApi = createControlMockApi();
@@ -39,6 +39,22 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 afterAll(() => server.close());
+
+function sessionEventsResponse(request: Request, events: Event[]) {
+  const url = new URL(request.url);
+  const page = Number(url.searchParams.get("page") ?? "1");
+  const pageSize = Number(url.searchParams.get("page_size") ?? "10");
+  const start = (page - 1) * pageSize;
+  return {
+    events: events.slice(start, start + pageSize),
+    pagination: {
+      page,
+      page_size: pageSize,
+      total: events.length,
+      total_pages: events.length === 0 ? 0 : Math.ceil(events.length / pageSize),
+    },
+  };
+}
 
 describe("control app", () => {
   it("renders sessions from the API", async () => {
@@ -220,20 +236,22 @@ describe("control app", () => {
     expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
-  it("renders timeline events in API order and access token last-used state", async () => {
+  it("renders paginated timeline events in recent-first order and access token last-used state", async () => {
     const session = makeSession({ id: "sess_detail", slug: "detail", title: "Detail" });
-    const events = [
-      makeEvent(session, { id: 1, type: "session.created", message: "Created" }),
-      makeEvent(session, { id: 2, type: "instance.create.started", message: "Creating instance" }),
-      makeEvent(session, { id: 3, type: "dns.create.succeeded", message: "DNS ready" }),
-      makeEvent(session, { id: 4, type: "session.ready", message: "Ready" }),
-    ];
+    const events = Array.from({ length: 12 }, (_, index) =>
+      makeEvent(session, {
+        id: 12 - index,
+        type: `event.${12 - index}`,
+        message: `Event ${12 - index}`,
+      }),
+    );
+    const eventRequests: string[] = [];
     server.use(
       http.get("/api/sessions/sess_detail", () =>
         HttpResponse.json(
           makeDetail({
             session,
-            events,
+            events: [],
             access_tokens: [
               makeAccessToken(session, "host", {
                 label: "Host link",
@@ -247,17 +265,34 @@ describe("control app", () => {
           }),
         ),
       ),
+      http.get("/api/sessions/sess_detail/events", ({ request }) => {
+        eventRequests.push(new URL(request.url).search);
+        return HttpResponse.json(sessionEventsResponse(request, events));
+      }),
     );
 
     renderApp("/sessions/sess_detail");
 
     expect(await screen.findByRole("heading", { name: "Detail" })).toBeInTheDocument();
     const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
+    expect(await within(eventsCard).findByText("Event 12")).toBeInTheDocument();
+    expect(within(eventsCard).getByText("Showing 10 of 12 events")).toBeInTheDocument();
+    expect(eventRequests).toContain("?page=1&page_size=10");
+    expect(within(eventsCard).queryByText("Event 2")).not.toBeInTheDocument();
+
+    fireEvent.click(within(eventsCard).getByRole("button", { name: "Load more events ↓" }));
+
+    expect(await within(eventsCard).findByText("Event 2")).toBeInTheDocument();
+    expect(within(eventsCard).getByText("Showing 12 of 12 events")).toBeInTheDocument();
+    expect(
+      within(eventsCard).queryByRole("button", { name: "Load more events ↓" }),
+    ).not.toBeInTheDocument();
+    expect(eventRequests).toContain("?page=2&page_size=10");
     const eventMessages = within(eventsCard)
-      .getAllByText(/^(Created|Creating instance|DNS ready|Ready)$/)
+      .getAllByText(/^Event \d+$/)
       .map((item) => item.textContent);
-    expect(eventMessages).toEqual(["Created", "Creating instance", "DNS ready", "Ready"]);
-    expect(within(eventsCard).queryByText("session.created")).not.toBeInTheDocument();
+    expect(eventMessages).toEqual(Array.from({ length: 12 }, (_, index) => `Event ${12 - index}`));
+    expect(within(eventsCard).queryByText("event.12")).not.toBeInTheDocument();
     expect(within(eventsCard).getByRole("link", { name: "⇩ Download" })).toHaveAttribute(
       "href",
       "/api/sessions/sess_detail/events.ndjson",
@@ -270,16 +305,100 @@ describe("control app", () => {
     expect(screen.getByText(/Revoked Apr 25, 2026 .*:00 AM/)).toBeInTheDocument();
   });
 
+  it("renders short and empty paginated timelines without a load-more button", async () => {
+    const shortSession = makeSession({
+      id: "sess_short_events",
+      slug: "short-events",
+      title: "Short events",
+    });
+    const emptySession = makeSession({
+      id: "sess_empty_events",
+      slug: "empty-events",
+      title: "Empty events",
+    });
+    const shortEvents = [
+      makeEvent(shortSession, { id: 2, message: "Second" }),
+      makeEvent(shortSession, { id: 1, message: "First" }),
+    ];
+    server.use(
+      http.get("/api/sessions/sess_short_events", () =>
+        HttpResponse.json(makeDetail({ session: shortSession, events: [] })),
+      ),
+      http.get("/api/sessions/sess_short_events/events", ({ request }) =>
+        HttpResponse.json(sessionEventsResponse(request, shortEvents)),
+      ),
+      http.get("/api/sessions/sess_empty_events", () =>
+        HttpResponse.json(makeDetail({ session: emptySession, events: [] })),
+      ),
+      http.get("/api/sessions/sess_empty_events/events", ({ request }) =>
+        HttpResponse.json(sessionEventsResponse(request, [])),
+      ),
+    );
+
+    const { unmount } = renderApp("/sessions/sess_short_events");
+    let eventsCard = (await screen.findByRole("heading", { name: "Session events" })).closest(
+      "section",
+    )!;
+    expect(await within(eventsCard).findByText("Second")).toBeInTheDocument();
+    expect(within(eventsCard).getByText("Showing 2 of 2 events")).toBeInTheDocument();
+    expect(
+      within(eventsCard).queryByRole("button", { name: "Load more events ↓" }),
+    ).not.toBeInTheDocument();
+
+    unmount();
+    renderApp("/sessions/sess_empty_events");
+    eventsCard = (await screen.findByRole("heading", { name: "Session events" })).closest(
+      "section",
+    )!;
+    expect(
+      await within(eventsCard).findByText("No session events recorded yet."),
+    ).toBeInTheDocument();
+    expect(
+      within(eventsCard).queryByRole("button", { name: "Load more events ↓" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders event pagination failures inside the events card", async () => {
+    const session = makeSession({
+      id: "sess_event_failure",
+      slug: "event-failure",
+      title: "Event failure",
+    });
+    server.use(
+      http.get("/api/sessions/sess_event_failure", () =>
+        HttpResponse.json(makeDetail({ session, events: [] })),
+      ),
+      http.get("/api/sessions/sess_event_failure/events", () =>
+        HttpResponse.json({ ok: false, error: "event store unavailable" }, { status: 503 }),
+      ),
+    );
+
+    renderApp("/sessions/sess_event_failure");
+
+    const eventsCard = (await screen.findByRole("heading", { name: "Session events" })).closest(
+      "section",
+    )!;
+    expect(await within(eventsCard).findByText("event store unavailable")).toBeInTheDocument();
+    expect(within(eventsCard).getByRole("link", { name: "⇩ Download" })).toHaveAttribute(
+      "href",
+      "/api/sessions/sess_event_failure/events.ndjson",
+    );
+  });
+
   it("does not fabricate join links or timeline events on existing session details", async () => {
     const session = makeSession({ id: "sess_audit", slug: "audit", title: "Audit" });
+    const events = [makeEvent(session, { id: 7, type: "session.created", message: "Created" })];
     server.use(
       http.get("/api/sessions/sess_audit", () =>
         HttpResponse.json(
           makeDetail({
             session,
-            events: [makeEvent(session, { id: 7, type: "session.created", message: "Created" })],
+            events: [],
           }),
         ),
+      ),
+      http.get("/api/sessions/sess_audit/events", ({ request }) =>
+        HttpResponse.json(sessionEventsResponse(request, events)),
       ),
     );
 
@@ -292,7 +411,7 @@ describe("control app", () => {
     expect(screen.queryByText("Host join link")).not.toBeInTheDocument();
     expect(screen.queryByText("Guest join link")).not.toBeInTheDocument();
     const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
-    expect(within(eventsCard).getByText("Created")).toBeInTheDocument();
+    expect(await within(eventsCard).findByText("Created")).toBeInTheDocument();
     expect(within(eventsCard).queryByText("session.created")).not.toBeInTheDocument();
     expect(screen.queryByText("instance.create.succeeded")).not.toBeInTheDocument();
     expect(screen.queryByText("session.ready")).not.toBeInTheDocument();
@@ -311,7 +430,10 @@ describe("control app", () => {
     });
     server.use(
       http.get("/api/sessions/sess_ended_with_runtime", () =>
-        HttpResponse.json(makeDetail({ session })),
+        HttpResponse.json(makeDetail({ session, events: [] })),
+      ),
+      http.get("/api/sessions/sess_ended_with_runtime/events", ({ request }) =>
+        HttpResponse.json(sessionEventsResponse(request, [])),
       ),
     );
 
@@ -345,7 +467,10 @@ describe("control app", () => {
     });
     server.use(
       http.get("/api/sessions/sess_failed_with_runtime", () =>
-        HttpResponse.json(makeDetail({ session })),
+        HttpResponse.json(makeDetail({ session, events: [] })),
+      ),
+      http.get("/api/sessions/sess_failed_with_runtime/events", ({ request }) =>
+        HttpResponse.json(sessionEventsResponse(request, [])),
       ),
     );
 
@@ -374,7 +499,7 @@ describe("control app", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("provisioning").length).toBeGreaterThan(0);
     const eventsCard = screen.getByRole("heading", { name: "Session events" }).closest("section")!;
-    expect(within(eventsCard).getByText("Provisioning started")).toBeInTheDocument();
+    expect(await within(eventsCard).findByText("Provisioning started")).toBeInTheDocument();
     expect(within(eventsCard).getByText("Provisioning failed")).toBeInTheDocument();
     expect(within(eventsCard).queryByText("provisioning.started")).not.toBeInTheDocument();
     expect(within(eventsCard).queryByText("provisioning.failed")).not.toBeInTheDocument();

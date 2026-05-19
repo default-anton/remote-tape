@@ -7,7 +7,7 @@ import {
   makeSessionsResponse,
 } from "./fixtures";
 import { detailForSession, scenario, validGuestToken, validHostToken } from "./scenarios";
-import type { CreateSessionInput, JoinResponse, Session } from "../types";
+import type { CreateSessionInput, Event, JoinResponse, Session } from "../types";
 import { slugify } from "../utils/forms";
 
 type CreatedSession = {
@@ -60,6 +60,16 @@ export function createControlMockApi(): ControlMockApi {
         return HttpResponse.json({ ok: false, error: "session not found" }, { status: 404 });
       }
       return HttpResponse.json(detailForSession(session));
+    }),
+    http.get("/api/sessions/:id/events", ({ params, request }) => {
+      const id = String(params.id ?? "");
+      const session = sessionsFor(request).find((item) => item.id === id);
+      if (!session) {
+        return HttpResponse.json({ ok: false, error: "session not found" }, { status: 404 });
+      }
+      return HttpResponse.json(
+        mockSessionEventsResponse(request, detailForSession(session).events),
+      );
     }),
     http.get("/api/session-slugs/:slug", ({ params, request }) => {
       const slug = String(params.slug ?? "")
@@ -182,6 +192,25 @@ function mockListSessionsResponse(request: Request, sessions: Session[]) {
     total_pages: total === 0 ? 0 : Math.ceil(total / pageSize),
   };
   return response;
+}
+
+function mockSessionEventsResponse(request: Request, events: Event[]) {
+  const url = new URL(request.url);
+  let page = positiveInt(url.searchParams.get("page"), 1);
+  const pageSize = positiveInt(url.searchParams.get("page_size"), 10);
+  const sorted = [...events].sort((left, right) => right.id - left.id);
+  const total = sorted.length;
+  page = clampPage(page, pageSize, total);
+  const start = (page - 1) * pageSize;
+  return {
+    events: sorted.slice(start, start + pageSize),
+    pagination: {
+      page,
+      page_size: pageSize,
+      total,
+      total_pages: total === 0 ? 0 : Math.ceil(total / pageSize),
+    },
+  };
 }
 
 function compareSessions(left: Session, right: Session, sort: string, direction: "asc" | "desc") {

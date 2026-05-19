@@ -5,6 +5,7 @@ import {
   CreateSessionResponseSchema,
   DetailSchema,
   JoinResponseSchema,
+  SessionEventsResponseSchema,
   SessionsResponseSchema,
   SlugAvailabilitySchema,
   type CreateSessionInput,
@@ -131,6 +132,22 @@ function appendParams(query: URLSearchParams, key: string, values: string[] | un
 
 export function getSession(id: string) {
   return requestJSON(`/api/sessions/${encodeURIComponent(id)}`, DetailSchema);
+}
+
+export type ListSessionEventsParams = {
+  page?: number;
+  pageSize?: number;
+};
+
+export function listSessionEvents(sessionId: string, params: ListSessionEventsParams = {}) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("page_size", String(params.pageSize));
+  const suffix = query.size > 0 ? `?${query}` : "";
+  return requestJSON(
+    `/api/sessions/${encodeURIComponent(sessionId)}/events${suffix}`,
+    SessionEventsResponseSchema,
+  );
 }
 
 export function checkSlugAvailability(slug: string) {

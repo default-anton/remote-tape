@@ -915,7 +915,7 @@ func (r *Repository) GetSession(ctx context.Context, id string) (Detail, error) 
 	if err != nil {
 		return Detail{}, err
 	}
-	events, err := r.listEvents(ctx, id, 10, 0)
+	events, err := r.listEvents(ctx, id, 10, 0, "asc")
 	if err != nil {
 		return Detail{}, err
 	}
@@ -940,7 +940,7 @@ func (r *Repository) ListSessionEvents(ctx context.Context, sessionID string, in
 		return ListSessionEventsResult{}, fmt.Errorf("count session events: %w", err)
 	}
 	input.Page = clampListSessionsPage(input.Page, input.PageSize, total)
-	events, err := r.listEvents(ctx, sessionID, input.PageSize, (input.Page-1)*input.PageSize)
+	events, err := r.listEvents(ctx, sessionID, input.PageSize, (input.Page-1)*input.PageSize, "desc")
 	if err != nil {
 		return ListSessionEventsResult{}, err
 	}
@@ -1159,12 +1159,16 @@ order by created_at, id;
 	return tokens, nil
 }
 
-func (r *Repository) listEvents(ctx context.Context, sessionID string, limit int, offset int) ([]Event, error) {
+func (r *Repository) listEvents(ctx context.Context, sessionID string, limit int, offset int, direction string) ([]Event, error) {
+	order := "asc"
+	if direction == "desc" {
+		order = "desc"
+	}
 	query := `
 select id, session_id, type, message, metadata_json, created_at
 from session_events
 where session_id = ?
-order by id asc`
+order by id ` + order
 	args := []any{sessionID}
 	if limit > 0 {
 		query += ` limit ? offset ?`

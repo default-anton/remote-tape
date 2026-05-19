@@ -224,11 +224,27 @@ values ('sess_events', 'first', 'First', ?, '2026-04-24T11:59:00.000000000Z');
 	if err != nil {
 		t.Fatalf("ListSessionEvents() error = %v", err)
 	}
-	if listed.Total != 3 || len(listed.Events) != 2 || listed.Events[0].Type != "second" || listed.Events[1].Type != "third" {
+	if listed.Total != 3 || listed.Page != 1 || listed.PageSize != 2 || len(listed.Events) != 2 || listed.Events[0].Type != "first" || listed.Events[1].Type != "third" {
 		t.Fatalf("listed events = %+v", listed)
 	}
-	if listed.Events[0].MetadataJSON == nil || *listed.Events[0].MetadataJSON != metadataB {
-		t.Fatalf("listed metadata = %+v", listed.Events[0].MetadataJSON)
+
+	pageTwo, err := repo.ListSessionEvents(ctx, "sess_events", ListSessionEventsInput{Page: 2, PageSize: 2})
+	if err != nil {
+		t.Fatalf("ListSessionEvents(page 2) error = %v", err)
+	}
+	if pageTwo.Total != 3 || pageTwo.Page != 2 || len(pageTwo.Events) != 1 || pageTwo.Events[0].Type != "second" {
+		t.Fatalf("page two events = %+v", pageTwo)
+	}
+	if pageTwo.Events[0].MetadataJSON == nil || *pageTwo.Events[0].MetadataJSON != metadataB {
+		t.Fatalf("listed metadata = %+v", pageTwo.Events[0].MetadataJSON)
+	}
+
+	clamped, err := repo.ListSessionEvents(ctx, "sess_events", ListSessionEventsInput{Page: 99, PageSize: 999})
+	if err != nil {
+		t.Fatalf("ListSessionEvents(clamped) error = %v", err)
+	}
+	if clamped.Page != 1 || clamped.PageSize != 200 || len(clamped.Events) != 3 {
+		t.Fatalf("clamped events = %+v", clamped)
 	}
 
 	var exported []Event
@@ -243,6 +259,10 @@ values ('sess_events', 'first', 'First', ?, '2026-04-24T11:59:00.000000000Z');
 	}
 	if exported[2].MetadataJSON == nil || *exported[2].MetadataJSON != metadataA {
 		t.Fatalf("exported metadata = %+v", exported[2].MetadataJSON)
+	}
+
+	if _, err := repo.ListSessionEvents(ctx, "sess_missing", ListSessionEventsInput{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ListSessionEvents() missing error = %v", err)
 	}
 
 	called := false

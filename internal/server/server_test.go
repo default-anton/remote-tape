@@ -170,6 +170,61 @@ values ('sess_empty', 'empty-detail', 'Empty Detail', 'created', 'nyc3', 's-1vcp
 	}
 }
 
+func TestSessionEventsAPIListsRecentEvents(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values ('sess_events_api', 'events-api', 'Events API', 'created', 'nyc3', 's-1vcpu-1gb', 'image', '2026-04-24T12:00:00.000000000Z', '2026-04-24T12:00:00.000000000Z');
+insert into session_events(session_id, type, message, metadata_json, created_at)
+values
+  ('sess_events_api', 'event.one', 'One', null, '2026-04-24T12:00:00.000000000Z'),
+  ('sess_events_api', 'event.two', 'Two', null, '2026-04-24T12:01:00.000000000Z'),
+  ('sess_events_api', 'event.three', 'Three', null, '2026-04-24T12:02:00.000000000Z');
+`); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_events_api/events?page=1&page_size=2", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	var listed struct {
+		Events []struct {
+			Type string `json:"type"`
+		} `json:"events"`
+		Pagination struct {
+			Page       int `json:"page"`
+			PageSize   int `json:"page_size"`
+			Total      int `json:"total"`
+			TotalPages int `json:"total_pages"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode events response: %v", err)
+	}
+	if listed.Pagination.Page != 1 || listed.Pagination.PageSize != 2 || listed.Pagination.Total != 3 || listed.Pagination.TotalPages != 2 {
+		t.Fatalf("pagination = %+v", listed.Pagination)
+	}
+	if len(listed.Events) != 2 || listed.Events[0].Type != "event.three" || listed.Events[1].Type != "event.two" {
+		t.Fatalf("events = %+v", listed.Events)
+	}
+
+	missing := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_missing/events", nil)
+	addCookies(missingReq, cookies)
+	handler.ServeHTTP(missing, missingReq)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d body = %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestSessionEventsNDJSONAPIExportsEvents(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()

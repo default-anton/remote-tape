@@ -1,5 +1,6 @@
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -12,6 +13,7 @@ import {
   forceDestroySessionServer,
   getSession,
   joinSession,
+  listSessionEvents,
   listSessions,
   login,
   logout,
@@ -94,6 +96,17 @@ export function useSessionDetail(id: string | undefined) {
     queryFn: () => getSession(id ?? ""),
     enabled: Boolean(id),
     refetchInterval: (query) => sessionDetailRefetchInterval(query.state.data),
+  });
+}
+
+export function useSessionEvents(sessionId: string, pageSize = 10) {
+  return useInfiniteQuery({
+    queryKey: sessionsKeys.events(sessionId, { pageSize }),
+    queryFn: ({ pageParam }) => listSessionEvents(sessionId, { page: pageParam, pageSize }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page < last.pagination.total_pages ? last.pagination.page + 1 : undefined,
+    enabled: Boolean(sessionId),
   });
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { useForceDestroySessionServer, useSessionDetail } from "../api/hooks";
+import { useForceDestroySessionServer, useSessionDetail, useSessionEvents } from "../api/hooks";
 import { Alert } from "../components/Alert";
 import { Icon } from "../components/Icon";
 import { Region, regionLabel } from "../components/Region";
@@ -15,7 +15,7 @@ import {
   sessionStatusLabel,
   type SessionStatus,
 } from "../domain/sessionStatus";
-import type { AccessToken, CreateSessionResponse, Detail, Event, Session } from "../types";
+import type { AccessToken, CreateSessionResponse, Detail, Session } from "../types";
 import { messageFromError } from "../utils/errors";
 import { formatDate, formatDateTime, formatTime } from "../utils/format";
 import { domainFor, value } from "../utils/session";
@@ -171,7 +171,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <main>
           <JoinLinks created={created} />
           <AccessTokensCard tokens={detail.access_tokens} />
-          <EventsCard events={detail.events} sessionId={session.id} />
+          <EventsCard sessionId={session.id} />
         </main>
         <aside className="diagnostic-stack">
           {hasRuntime ? (
@@ -485,7 +485,12 @@ function tokenUsageLabel(token: AccessToken) {
   return "Never used";
 }
 
-function EventsCard({ events, sessionId }: { events: Event[]; sessionId: string }) {
+function EventsCard({ sessionId }: { sessionId: string }) {
+  const events = useSessionEvents(sessionId);
+  const loadedEvents = events.data?.pages.flatMap((page) => page.events) ?? [];
+  const total = events.data?.pages[0]?.pagination.total ?? 0;
+  const isLoaded = Boolean(events.data);
+
   return (
     <section className="panel events-card">
       <div className="section-head">
@@ -497,11 +502,18 @@ function EventsCard({ events, sessionId }: { events: Event[]; sessionId: string 
           ⇩ Download
         </a>
       </div>
-      {events.length === 0 ? (
+      {events.isLoading ? <p className="muted">Loading events…</p> : null}
+      {events.isError ? <Alert>{messageFromError(events.error)}</Alert> : null}
+      {isLoaded && total > 0 ? (
+        <p className="muted">
+          Showing {loadedEvents.length} of {total} events
+        </p>
+      ) : null}
+      {isLoaded && total === 0 ? (
         <p className="muted">No session events recorded yet.</p>
-      ) : (
+      ) : loadedEvents.length > 0 ? (
         <ul>
-          {events.slice(0, 10).map((event) => (
+          {loadedEvents.map((event) => (
             <li key={event.id}>
               <time>{formatTime(event.created_at)}</time>
               <span className="event-line" />
@@ -510,10 +522,15 @@ function EventsCard({ events, sessionId }: { events: Event[]; sessionId: string 
             </li>
           ))}
         </ul>
-      )}
-      {events.length > 10 ? (
-        <button className="button ghost load-more" type="button">
-          Load more events ↓
+      ) : null}
+      {events.hasNextPage ? (
+        <button
+          className="button ghost load-more"
+          type="button"
+          disabled={events.isFetchingNextPage}
+          onClick={() => void events.fetchNextPage()}
+        >
+          {events.isFetchingNextPage ? "Loading events…" : "Load more events ↓"}
         </button>
       ) : null}
     </section>
