@@ -106,7 +106,7 @@
 .detail-grid {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(0, 1fr) 407px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(500px, 1fr);
 }
 .detail-grid > main,
 .detail-grid > aside {
