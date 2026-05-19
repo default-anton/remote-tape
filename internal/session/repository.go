@@ -172,6 +172,18 @@ type ListSessionsResult struct {
 	PollableCount  int
 }
 
+type ListSessionEventsInput struct {
+	Page     int
+	PageSize int
+}
+
+type ListSessionEventsResult struct {
+	Events   []Event
+	Total    int
+	Page     int
+	PageSize int
+}
+
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db, now: func() time.Time { return time.Now().UTC() }}
 }
@@ -903,11 +915,76 @@ func (r *Repository) GetSession(ctx context.Context, id string) (Detail, error) 
 	if err != nil {
 		return Detail{}, err
 	}
-	events, err := r.listEvents(ctx, id)
+	events, err := r.listEvents(ctx, id, 10, 0)
 	if err != nil {
 		return Detail{}, err
 	}
 	return Detail{Session: s, AccessTokens: tokens, Events: events}, nil
+}
+
+func (r *Repository) ListSessionEvents(ctx context.Context, sessionID string, input ListSessionEventsInput) (ListSessionEventsResult, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ListSessionEventsResult{}, ErrNotFound
+	}
+	exists, err := r.sessionExists(ctx, sessionID)
+	if err != nil {
+		return ListSessionEventsResult{}, err
+	}
+	if !exists {
+		return ListSessionEventsResult{}, ErrNotFound
+	}
+	input = normalizeListSessionEventsInput(input)
+	var total int
+	if err := r.db.QueryRowContext(ctx, `select count(*) from session_events where session_id = ?;`, sessionID).Scan(&total); err != nil {
+		return ListSessionEventsResult{}, fmt.Errorf("count session events: %w", err)
+	}
+	input.Page = clampListSessionsPage(input.Page, input.PageSize, total)
+	events, err := r.listEvents(ctx, sessionID, input.PageSize, (input.Page-1)*input.PageSize)
+	if err != nil {
+		return ListSessionEventsResult{}, err
+	}
+	return ListSessionEventsResult{Events: events, Total: total, Page: input.Page, PageSize: input.PageSize}, nil
+}
+
+func (r *Repository) StreamSessionEvents(ctx context.Context, sessionID string, yield func(Event) error) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ErrNotFound
+	}
+	if yield == nil {
+		return fmt.Errorf("%w: event stream callback is required", ErrInvalidInput)
+	}
+	exists, err := r.sessionExists(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	rows, err := r.db.QueryContext(ctx, `
+select id, session_id, type, message, metadata_json, created_at
+from session_events
+where session_id = ?
+order by id asc;
+`, sessionID)
+	if err != nil {
+		return fmt.Errorf("stream session events: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		event, err := scanEvent(rows)
+		if err != nil {
+			return err
+		}
+		if err := yield(event); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("stream session events: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) JoinSession(ctx context.Context, slug string, rawToken string) (JoinResult, error) {
@@ -1045,6 +1122,18 @@ func (r *Repository) slugExists(ctx context.Context, slug string) (bool, error) 
 	return true, nil
 }
 
+func (r *Repository) sessionExists(ctx context.Context, id string) (bool, error) {
+	var found string
+	err := r.db.QueryRowContext(ctx, `select id from sessions where id = ?;`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check session existence: %w", err)
+	}
+	return true, nil
+}
+
 func (r *Repository) listAccessTokens(ctx context.Context, sessionID string) ([]AccessToken, error) {
 	rows, err := r.db.QueryContext(ctx, `
 select id, session_id, role, label, created_at, last_used_at, revoked_at
@@ -1070,13 +1159,18 @@ order by created_at, id;
 	return tokens, nil
 }
 
-func (r *Repository) listEvents(ctx context.Context, sessionID string) ([]Event, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *Repository) listEvents(ctx context.Context, sessionID string, limit int, offset int) ([]Event, error) {
+	query := `
 select id, session_id, type, message, metadata_json, created_at
 from session_events
 where session_id = ?
-order by id asc;
-`, sessionID)
+order by id asc`
+	args := []any{sessionID}
+	if limit > 0 {
+		query += ` limit ? offset ?`
+		args = append(args, limit, offset)
+	}
+	rows, err := r.db.QueryContext(ctx, query+`;`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list session events: %w", err)
 	}
@@ -1093,6 +1187,19 @@ order by id asc;
 		return nil, fmt.Errorf("list session events: %w", err)
 	}
 	return events, nil
+}
+
+func normalizeListSessionEventsInput(input ListSessionEventsInput) ListSessionEventsInput {
+	if input.Page < 1 {
+		input.Page = 1
+	}
+	if input.PageSize <= 0 {
+		input.PageSize = 50
+	}
+	if input.PageSize > 200 {
+		input.PageSize = 200
+	}
+	return input
 }
 
 func AppendEvent(ctx context.Context, db *sql.DB, sessionID string, eventType string, message *string, metadataJSON *string) (int64, error) {

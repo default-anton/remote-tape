@@ -171,7 +171,7 @@ function SessionDetail({ detail, created }: { detail: Detail; created?: CreateSe
         <main>
           <JoinLinks created={created} />
           <AccessTokensCard tokens={detail.access_tokens} />
-          <EventsCard events={detail.events} />
+          <EventsCard events={detail.events} sessionId={session.id} />
         </main>
         <aside className="diagnostic-stack">
           {hasRuntime ? (
@@ -485,14 +485,17 @@ function tokenUsageLabel(token: AccessToken) {
   return "Never used";
 }
 
-function EventsCard({ events }: { events: Event[] }) {
+function EventsCard({ events, sessionId }: { events: Event[]; sessionId: string }) {
   return (
     <section className="panel events-card">
       <div className="section-head">
         <h2>Session events</h2>
-        <button className="button ghost" type="button">
+        <a
+          className="button ghost"
+          href={`/api/sessions/${encodeURIComponent(sessionId)}/events.ndjson`}
+        >
           ⇩ Download
-        </button>
+        </a>
       </div>
       {events.length === 0 ? (
         <p className="muted">No session events recorded yet.</p>

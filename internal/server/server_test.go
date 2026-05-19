@@ -170,6 +170,56 @@ values ('sess_empty', 'empty-detail', 'Empty Detail', 'created', 'nyc3', 's-1vcp
 	}
 }
 
+func TestSessionEventsNDJSONAPIExportsEvents(t *testing.T) {
+	handler, db := newTestHandler(t)
+	defer db.Close()
+	cookies, _ := loginTestAdmin(t, handler)
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values ('sess_export', 'export', 'Export', 'created', 'nyc3', 's-1vcpu-1gb', 'image', '2026-04-24T12:00:00.000000000Z', '2026-04-24T12:00:00.000000000Z');
+insert into session_events(session_id, type, message, metadata_json, created_at)
+values
+  ('sess_export', 'session.created', 'Session created', '{"ok":true}', '2026-04-24T12:00:00.000000000Z'),
+  ('sess_export', 'metadata.invalid', 'Invalid metadata', '{not-json}', '2026-04-24T12:01:00.000000000Z');
+`); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_export/events.ndjson", nil)
+	addCookies(request, cookies)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Content-Type") != "application/x-ndjson" {
+		t.Fatalf("Content-Type = %q", response.Header().Get("Content-Type"))
+	}
+	if got := response.Header().Get("Content-Disposition"); got != `attachment; filename="remote-tape-session-sess_export-events.ndjson"` {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	lines := strings.Split(strings.TrimSpace(response.Body.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines = %q", lines)
+	}
+	if !strings.Contains(lines[0], `"type":"session.created"`) || !strings.Contains(lines[0], `"metadata":{"ok":true}`) {
+		t.Fatalf("first line = %s", lines[0])
+	}
+	if !strings.Contains(lines[1], `"type":"metadata.invalid"`) || !strings.Contains(lines[1], `"metadata":null`) || !strings.Contains(lines[1], `"metadata_json":"{not-json}"`) {
+		t.Fatalf("second line = %s", lines[1])
+	}
+
+	missing := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_missing/events.ndjson", nil)
+	addCookies(missingReq, cookies)
+	handler.ServeHTTP(missing, missingReq)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d body = %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestCreateAndGetSessionAPI(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()

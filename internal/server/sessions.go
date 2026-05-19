@@ -58,6 +58,28 @@ type forceDestroyRequest struct {
 	Confirmation string `json:"confirmation"`
 }
 
+type listSessionEventsResponse struct {
+	Events     []session.Event         `json:"events"`
+	Pagination sessionEventsPagination `json:"pagination"`
+}
+
+type sessionEventsPagination struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"page_size"`
+	Total      int `json:"total"`
+	TotalPages int `json:"total_pages"`
+}
+
+type sessionEventExportLine struct {
+	ID           int64   `json:"id"`
+	SessionID    string  `json:"session_id"`
+	Type         string  `json:"type"`
+	Message      *string `json:"message"`
+	Metadata     any     `json:"metadata"`
+	MetadataJSON *string `json:"metadata_json,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+}
+
 type listSessionsResponse struct {
 	Sessions            []session.Session   `json:"sessions"`
 	Pagination          sessionsPagination  `json:"pagination"`
@@ -144,9 +166,18 @@ func (s *Server) apiSessionSlug(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/")
 	parts := strings.Split(path, "/")
-	if len(parts) == 2 && parts[1] == "force-destroy" {
-		s.apiForceDestroySession(w, r, parts[0])
-		return
+	if len(parts) == 2 {
+		switch parts[1] {
+		case "force-destroy":
+			s.apiForceDestroySession(w, r, parts[0])
+			return
+		case "events":
+			s.apiSessionEvents(w, r, parts[0])
+			return
+		case "events.ndjson":
+			s.apiSessionEventsNDJSON(w, r, parts[0])
+			return
+		}
 	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
@@ -166,6 +197,65 @@ func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) apiSessionEvents(w http.ResponseWriter, r *http.Request, id string) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	result, err := s.repo.ListSessionEvents(r.Context(), id, session.ListSessionEventsInput{
+		Page:     parsePositiveInt(r.URL.Query().Get("page")),
+		PageSize: parsePositiveInt(r.URL.Query().Get("page_size")),
+	})
+	if errors.Is(err, session.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		writeOperationError(w, http.StatusInternalServerError, "list session events", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, listSessionEventsResponse{Events: result.Events, Pagination: sessionEventsPaginationFor(result)})
+}
+
+func (s *Server) apiSessionEventsNDJSON(w http.ResponseWriter, r *http.Request, id string) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	headersWritten := false
+	writeHeaders := func() {
+		if headersWritten {
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="remote-tape-session-%s-events.ndjson"`, contentDispositionFilenamePart(id)))
+		w.WriteHeader(http.StatusOK)
+		headersWritten = true
+	}
+	encoder := json.NewEncoder(w)
+	err := s.repo.StreamSessionEvents(r.Context(), id, func(event session.Event) error {
+		writeHeaders()
+		return encoder.Encode(sessionEventExportLineFor(event))
+	})
+	if errors.Is(err, session.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		if !headersWritten {
+			writeOperationError(w, http.StatusInternalServerError, "export session events", err)
+		}
+		return
+	}
+	writeHeaders()
 }
 
 func (s *Server) apiForceDestroySession(w http.ResponseWriter, r *http.Request, id string) {
@@ -259,6 +349,43 @@ func sessionsPaginationFor(result session.ListSessionsResult) sessionsPagination
 		totalPages = (result.Total + result.PageSize - 1) / result.PageSize
 	}
 	return sessionsPagination{Page: result.Page, PageSize: result.PageSize, Total: result.Total, TotalPages: totalPages}
+}
+
+func sessionEventsPaginationFor(result session.ListSessionEventsResult) sessionEventsPagination {
+	totalPages := 0
+	if result.Total > 0 {
+		totalPages = (result.Total + result.PageSize - 1) / result.PageSize
+	}
+	return sessionEventsPagination{Page: result.Page, PageSize: result.PageSize, Total: result.Total, TotalPages: totalPages}
+}
+
+func sessionEventExportLineFor(event session.Event) sessionEventExportLine {
+	line := sessionEventExportLine{
+		ID:        event.ID,
+		SessionID: event.SessionID,
+		Type:      event.Type,
+		Message:   event.Message,
+		Metadata:  nil,
+		CreatedAt: event.CreatedAt,
+	}
+	if event.MetadataJSON == nil {
+		return line
+	}
+	var metadata any
+	if err := json.Unmarshal([]byte(*event.MetadataJSON), &metadata); err != nil {
+		line.MetadataJSON = event.MetadataJSON
+		return line
+	}
+	line.Metadata = metadata
+	return line
+}
+
+func contentDispositionFilenamePart(value string) string {
+	value = strings.NewReplacer(`"`, "-", "\\", "-", "/", "-").Replace(value)
+	if value == "" {
+		return "session"
+	}
+	return value
 }
 
 func sessionsSummaryFor(result session.ListSessionsResult) sessionsSummary {

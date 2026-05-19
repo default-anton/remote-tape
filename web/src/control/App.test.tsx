@@ -258,6 +258,10 @@ describe("control app", () => {
       .map((item) => item.textContent);
     expect(eventMessages).toEqual(["Created", "Creating instance", "DNS ready", "Ready"]);
     expect(within(eventsCard).queryByText("session.created")).not.toBeInTheDocument();
+    expect(within(eventsCard).getByRole("link", { name: "⇩ Download" })).toHaveAttribute(
+      "href",
+      "/api/sessions/sess_detail/events.ndjson",
+    );
     expect(screen.getByText("host")).toBeInTheDocument();
     expect(screen.getByText("guest")).toBeInTheDocument();
     expect(screen.getByText("Host link · active")).toBeInTheDocument();

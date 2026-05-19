@@ -194,6 +194,69 @@ values ('sess_empty', 'empty-detail', 'Empty Detail', 'created', 'nyc3', 's-1vcp
 	}
 }
 
+func TestListAndStreamSessionEventsPreserveOrderAndMetadata(t *testing.T) {
+	ctx := context.Background()
+	db := openSessionTestDB(t, ctx)
+	repo := NewRepository(db)
+
+	if _, err := db.ExecContext(ctx, `
+insert into sessions(id, slug, title, status, instance_region, instance_size, image_id, created_at, updated_at)
+values ('sess_events', 'events', 'Events', 'created', 'nyc3', 's-1vcpu-1gb', 'image', '2026-04-24T12:00:00.000000000Z', '2026-04-24T12:00:00.000000000Z');
+`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	metadataA := `{"step":1}`
+	metadataB := `{not-json}`
+	if _, err := AppendEvent(ctx, db, "sess_events", "second", stringPtr("Second"), &metadataB); err != nil {
+		t.Fatalf("append second event: %v", err)
+	}
+	if _, err := AppendEvent(ctx, db, "sess_events", "third", stringPtr("Third"), nil); err != nil {
+		t.Fatalf("append third event: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+insert into session_events(session_id, type, message, metadata_json, created_at)
+values ('sess_events', 'first', 'First', ?, '2026-04-24T11:59:00.000000000Z');
+`, metadataA); err != nil {
+		t.Fatalf("insert first event: %v", err)
+	}
+
+	listed, err := repo.ListSessionEvents(ctx, "sess_events", ListSessionEventsInput{Page: 1, PageSize: 2})
+	if err != nil {
+		t.Fatalf("ListSessionEvents() error = %v", err)
+	}
+	if listed.Total != 3 || len(listed.Events) != 2 || listed.Events[0].Type != "second" || listed.Events[1].Type != "third" {
+		t.Fatalf("listed events = %+v", listed)
+	}
+	if listed.Events[0].MetadataJSON == nil || *listed.Events[0].MetadataJSON != metadataB {
+		t.Fatalf("listed metadata = %+v", listed.Events[0].MetadataJSON)
+	}
+
+	var exported []Event
+	if err := repo.StreamSessionEvents(ctx, "sess_events", func(event Event) error {
+		exported = append(exported, event)
+		return nil
+	}); err != nil {
+		t.Fatalf("StreamSessionEvents() error = %v", err)
+	}
+	if len(exported) != 3 || exported[0].Type != "second" || exported[1].Type != "third" || exported[2].Type != "first" {
+		t.Fatalf("exported events = %+v", exported)
+	}
+	if exported[2].MetadataJSON == nil || *exported[2].MetadataJSON != metadataA {
+		t.Fatalf("exported metadata = %+v", exported[2].MetadataJSON)
+	}
+
+	called := false
+	if err := repo.StreamSessionEvents(ctx, "sess_missing", func(Event) error {
+		called = true
+		return nil
+	}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("StreamSessionEvents() missing error = %v", err)
+	}
+	if called {
+		t.Fatal("StreamSessionEvents() called callback for missing session")
+	}
+}
+
 func TestListProvisioningCandidatesReturnsCreatedOrderedAndBounded(t *testing.T) {
 	ctx := context.Background()
 	db := openSessionTestDB(t, ctx)
