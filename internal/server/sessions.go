@@ -174,8 +174,8 @@ func (s *Server) apiSession(w http.ResponseWriter, r *http.Request) {
 		case "events":
 			s.apiSessionEvents(w, r, parts[0])
 			return
-		case "events.ndjson":
-			s.apiSessionEventsNDJSON(w, r, parts[0])
+		case "events.jsonl":
+			s.apiSessionEventsJSONL(w, r, parts[0])
 			return
 		}
 	}
@@ -222,7 +222,7 @@ func (s *Server) apiSessionEvents(w http.ResponseWriter, r *http.Request, id str
 	writeJSON(w, http.StatusOK, listSessionEventsResponse{Events: result.Events, Pagination: sessionEventsPaginationFor(result)})
 }
 
-func (s *Server) apiSessionEventsNDJSON(w http.ResponseWriter, r *http.Request, id string) {
+func (s *Server) apiSessionEventsJSONL(w http.ResponseWriter, r *http.Request, id string) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
@@ -235,8 +235,8 @@ func (s *Server) apiSessionEventsNDJSON(w http.ResponseWriter, r *http.Request, 
 		if headersWritten {
 			return
 		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="remote-tape-session-%s-events.ndjson"`, contentDispositionFilenamePart(id)))
+		w.Header().Set("Content-Type", "application/jsonl")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="remote-tape-session-%s-events.jsonl"`, contentDispositionFilenamePart(id)))
 		w.WriteHeader(http.StatusOK)
 		headersWritten = true
 	}

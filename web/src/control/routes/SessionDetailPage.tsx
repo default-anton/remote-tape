@@ -497,7 +497,7 @@ function EventsCard({ sessionId }: { sessionId: string }) {
         <h2>Session events</h2>
         <a
           className="button ghost"
-          href={`/api/sessions/${encodeURIComponent(sessionId)}/events.ndjson`}
+          href={`/api/sessions/${encodeURIComponent(sessionId)}/events.jsonl`}
         >
           ⇩ Download
         </a>

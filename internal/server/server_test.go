@@ -225,7 +225,7 @@ values
 	}
 }
 
-func TestSessionEventsNDJSONAPIExportsEvents(t *testing.T) {
+func TestSessionEventsJSONLAPIExportsEvents(t *testing.T) {
 	handler, db := newTestHandler(t)
 	defer db.Close()
 	cookies, _ := loginTestAdmin(t, handler)
@@ -243,16 +243,16 @@ values
 	}
 
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_export/events.ndjson", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_export/events.jsonl", nil)
 	addCookies(request, cookies)
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
-	if response.Header().Get("Content-Type") != "application/x-ndjson" {
+	if response.Header().Get("Content-Type") != "application/jsonl" {
 		t.Fatalf("Content-Type = %q", response.Header().Get("Content-Type"))
 	}
-	if got := response.Header().Get("Content-Disposition"); got != `attachment; filename="remote-tape-session-sess_export-events.ndjson"` {
+	if got := response.Header().Get("Content-Disposition"); got != `attachment; filename="remote-tape-session-sess_export-events.jsonl"` {
 		t.Fatalf("Content-Disposition = %q", got)
 	}
 	lines := strings.Split(strings.TrimSpace(response.Body.String()), "\n")
@@ -267,7 +267,7 @@ values
 	}
 
 	missing := httptest.NewRecorder()
-	missingReq := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_missing/events.ndjson", nil)
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/sessions/sess_missing/events.jsonl", nil)
 	addCookies(missingReq, cookies)
 	handler.ServeHTTP(missing, missingReq)
 	if missing.Code != http.StatusNotFound {

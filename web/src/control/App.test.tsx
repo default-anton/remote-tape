@@ -296,7 +296,7 @@ describe("control app", () => {
     expect(within(eventsCard).queryByText("event.12")).not.toBeInTheDocument();
     expect(within(eventsCard).getByRole("link", { name: "⇩ Download" })).toHaveAttribute(
       "href",
-      "/api/sessions/sess_detail/events.ndjson",
+      "/api/sessions/sess_detail/events.jsonl",
     );
     expect(screen.getByText("host")).toBeInTheDocument();
     expect(screen.getByText("guest")).toBeInTheDocument();
@@ -382,7 +382,7 @@ describe("control app", () => {
     expect(await within(eventsCard).findByText("event store unavailable")).toBeInTheDocument();
     expect(within(eventsCard).getByRole("link", { name: "⇩ Download" })).toHaveAttribute(
       "href",
-      "/api/sessions/sess_event_failure/events.ndjson",
+      "/api/sessions/sess_event_failure/events.jsonl",
     );
   });
 
