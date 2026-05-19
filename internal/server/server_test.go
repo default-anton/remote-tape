@@ -115,22 +115,7 @@ func TestListSessionsAPIReturnsEmptyArray(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
-	var body struct {
-		Sessions            []any `json:"sessions"`
-		ProvisioningOptions struct {
-			Defaults struct {
-				Region string `json:"region"`
-				Size   string `json:"size"`
-			} `json:"defaults"`
-			Regions                 []any               `json:"regions"`
-			Sizes                   []any               `json:"sizes"`
-			Availability            map[string][]string `json:"availability"`
-			RecommendedSizeByRegion map[string]string   `json:"recommended_size_by_region"`
-		} `json:"provisioning_options"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	body := decodeSessionsResponseForTest(t, response.Body.Bytes())
 	if len(body.Sessions) != 0 {
 		t.Fatalf("sessions = %+v", body.Sessions)
 	}
@@ -142,6 +127,38 @@ func TestListSessionsAPIReturnsEmptyArray(t *testing.T) {
 	}
 	if body.ProvisioningOptions.RecommendedSizeByRegion["nyc3"] != "s-2vcpu-4gb" {
 		t.Fatalf("recommended_size_by_region = %+v", body.ProvisioningOptions.RecommendedSizeByRegion)
+	}
+}
+
+func TestListSessionsAPIEnvFiltersProvisioningOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		wantDev bool
+	}{
+		{name: "development", env: provisioningEnvironmentDevelopment, wantDev: true},
+		{name: "production", env: provisioningEnvironmentProduction, wantDev: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, db := newTestHandlerWithOptions(t, Options{Environment: tt.env})
+			defer db.Close()
+			cookies, _ := loginTestAdmin(t, handler)
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+			addCookies(request, cookies)
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+			body := decodeSessionsResponseForTest(t, response.Body.Bytes())
+			gotDev := hasProvisioningSizeForTest(body.ProvisioningOptions.Sizes, devOnlyCheapestProvisioningSize)
+			if gotDev != tt.wantDev {
+				t.Fatalf("development-only size present = %v, want %v; sizes = %+v", gotDev, tt.wantDev, body.ProvisioningOptions.Sizes)
+			}
+		})
 	}
 }
 
@@ -416,6 +433,7 @@ func TestCreateSessionProvisioningValidation(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
+		options    Options
 		wantStatus int
 		wantError  string
 	}{
@@ -447,11 +465,24 @@ func TestCreateSessionProvisioningValidation(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 			wantError:  `instance size "c-2" is not available in region "nyc3"`,
 		},
+		{
+			name:       "development-only size allowed in development",
+			body:       `{"title":"Cheap Dev","slug":"cheap-dev","instance_region":"nyc3","instance_size":"s-1vcpu-512mb-10gb"}`,
+			options:    Options{Environment: provisioningEnvironmentDevelopment},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "development-only size rejected in production",
+			body:       `{"title":"Cheap Prod","slug":"cheap-prod","instance_region":"nyc3","instance_size":"s-1vcpu-512mb-10gb"}`,
+			options:    Options{Environment: provisioningEnvironmentProduction},
+			wantStatus: http.StatusBadRequest,
+			wantError:  `instance size "s-1vcpu-512mb-10gb" is development-only`,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, db := newTestHandler(t)
+			handler, db := newTestHandlerWithOptions(t, tt.options)
 			defer db.Close()
 			cookies, csrf := loginTestAdmin(t, handler)
 
@@ -865,7 +896,48 @@ func equalPtr(a *string, b *string) bool {
 	return *a == *b
 }
 
+type sessionsResponseForTest struct {
+	Sessions            []any `json:"sessions"`
+	ProvisioningOptions struct {
+		Defaults struct {
+			Region string `json:"region"`
+			Size   string `json:"size"`
+		} `json:"defaults"`
+		Regions []any `json:"regions"`
+		Sizes   []struct {
+			Slug string `json:"slug"`
+		} `json:"sizes"`
+		Availability            map[string][]string `json:"availability"`
+		RecommendedSizeByRegion map[string]string   `json:"recommended_size_by_region"`
+	} `json:"provisioning_options"`
+}
+
+func decodeSessionsResponseForTest(t *testing.T, data []byte) sessionsResponseForTest {
+	t.Helper()
+	var body sessionsResponseForTest
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return body
+}
+
+func hasProvisioningSizeForTest(sizes []struct {
+	Slug string `json:"slug"`
+}, slug string) bool {
+	for _, size := range sizes {
+		if size.Slug == slug {
+			return true
+		}
+	}
+	return false
+}
+
 func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
+	t.Helper()
+	return newTestHandlerWithOptions(t, Options{})
+}
+
+func newTestHandlerWithOptions(t *testing.T, options Options) (http.Handler, *sql.DB) {
 	t.Helper()
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "control-plane.db"))
@@ -876,7 +948,8 @@ func newTestHandler(t *testing.T) (http.Handler, *sql.DB) {
 		db.Close()
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	handler, err := New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Auth: newTestAuth(t)})
+	options.Auth = newTestAuth(t)
+	handler, err := New(db, slog.New(slog.NewTextHandler(io.Discard, nil)), options)
 	if err != nil {
 		db.Close()
 		t.Fatalf("New() error = %v", err)

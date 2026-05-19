@@ -23,6 +23,14 @@ export function makeProvisioningOptions(
     ],
     sizes: [
       {
+        slug: "s-1vcpu-512mb-10gb",
+        label: "Shared CPU Basic",
+        description:
+          "1 vCPU / 512 MB / 10 GB — development-only cheapest size; not for recording-quality validation",
+        recommended: false,
+        dedicated_cpu: false,
+      },
+      {
         slug: "s-2vcpu-2gb",
         label: "Shared CPU Basic",
         description: "2 vCPU / 2 GB / 60 GB — low-cost small session",
@@ -45,8 +53,8 @@ export function makeProvisioningOptions(
       },
     ],
     availability: {
-      nyc3: ["s-2vcpu-2gb", "s-2vcpu-4gb"],
-      sfo2: ["s-2vcpu-2gb", "s-2vcpu-4gb", "c-2"],
+      nyc3: ["s-1vcpu-512mb-10gb", "s-2vcpu-2gb", "s-2vcpu-4gb"],
+      sfo2: ["s-1vcpu-512mb-10gb", "s-2vcpu-2gb", "s-2vcpu-4gb", "c-2"],
     },
     recommended_size_by_region: {
       nyc3: "s-2vcpu-4gb",

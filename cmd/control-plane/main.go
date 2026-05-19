@@ -92,6 +92,7 @@ func run(ctx context.Context) int {
 	defer listener.Close()
 
 	handler, err := server.New(db, logger, server.Options{
+		Environment:         cfg.General.Environment,
 		ControlPlaneURL:     cfg.General.ControlPlaneURL,
 		SessionsBaseDomain:  cfg.General.SessionsBaseDomain,
 		DefaultRegion:       cfg.Provisioning.DefaultRegion,

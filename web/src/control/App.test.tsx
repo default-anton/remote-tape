@@ -734,6 +734,22 @@ describe("control app", () => {
     expect(screen.getByLabelText("Instance size")).toHaveValue("s-2vcpu-4gb");
   });
 
+  it("can select the development-only cheapest mock size", async () => {
+    renderApp("/sessions/new");
+
+    await waitFor(() => expect(screen.getByLabelText("Preferred region")).toHaveValue("nyc3"));
+    fireEvent.change(screen.getByLabelText("Instance size"), {
+      target: { value: "s-1vcpu-512mb-10gb" },
+    });
+
+    expect(screen.getByLabelText("Instance size")).toHaveValue("s-1vcpu-512mb-10gb");
+    expect(
+      screen.getByText(
+        "A shared CPU DigitalOcean droplet in New York 3 (nyc3) sized s-1vcpu-512mb-10gb: 1 vCPU / 512 MB / 10 GB — development-only cheapest size; not for recording-quality validation.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("preserves size when the next region supports it", async () => {
     renderApp("/sessions/new");
 

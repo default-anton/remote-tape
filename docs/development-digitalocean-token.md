@@ -35,6 +35,8 @@ Why these are needed:
 
 For the current provisioning slice only, you may omit `droplet:delete` if you want a safer token. Add it before testing teardown.
 
+Cheapest-size dev testing (`s-1vcpu-512mb-10gb`) uses the same scopes.
+
 ## Not needed
 
 Do not grant these scopes for remote-tape development unless a future slice explicitly requires them:

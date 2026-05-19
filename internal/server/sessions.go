@@ -123,7 +123,7 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 			writeOperationError(w, http.StatusInternalServerError, "list sessions", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, listSessionsResponseFor(result, s.options.DefaultRegion, s.options.DefaultInstanceSize))
+		writeJSON(w, http.StatusOK, listSessionsResponseFor(result, s.options.Environment, s.options.DefaultRegion, s.options.DefaultInstanceSize))
 	case http.MethodPost:
 		var req createSessionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -332,14 +332,14 @@ func parsePositiveInt(value string) int {
 	return parsed
 }
 
-func listSessionsResponseFor(result session.ListSessionsResult, defaultRegion string, defaultSize string) listSessionsResponse {
+func listSessionsResponseFor(result session.ListSessionsResult, environment string, defaultRegion string, defaultSize string) listSessionsResponse {
 	return listSessionsResponse{
 		Sessions:            result.Sessions,
 		Pagination:          sessionsPaginationFor(result),
 		Summary:             sessionsSummaryFor(result),
 		Filters:             sessionsFiltersFor(),
 		HasPollable:         result.PollableCount > 0,
-		ProvisioningOptions: provisioningOptionsFor(defaultRegion, defaultSize),
+		ProvisioningOptions: provisioningOptionsFor(environment, defaultRegion, defaultSize),
 	}
 }
 
@@ -465,7 +465,7 @@ func (s *Server) createSession(r *http.Request, req createSessionRequest) (sessi
 	if size == "" {
 		size = s.options.DefaultInstanceSize
 	}
-	if err := validateProvisioningSelection(region, size); err != nil {
+	if err := validateProvisioningSelection(s.options.Environment, region, size); err != nil {
 		return session.CreateResult{}, err
 	}
 	imageID := strings.TrimSpace(req.ImageID)

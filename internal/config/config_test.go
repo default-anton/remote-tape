@@ -86,6 +86,22 @@ func TestPlaintextPasswordHashIsInvalid(t *testing.T) {
 	}
 }
 
+func TestDevOnlyCheapestDefaultInstanceSizeRequiresDevelopment(t *testing.T) {
+	cfg := validConfig()
+	cfg.Provisioning.DefaultInstanceSize = devOnlyCheapestInstanceSize
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("development Validate() error = %v", err)
+	}
+
+	cfg.General.Environment = EnvironmentProduction
+	cfg.General.ControlPlaneURL = "https://control.example.com"
+	cfg.General.SessionsBaseDomain = "sessions.example.com"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "REMOTE_TAPE_DEFAULT_INSTANCE_SIZE=s-1vcpu-512mb-10gb is allowed only when REMOTE_TAPE_ENV=development") {
+		t.Fatalf("production Validate() error = %v", err)
+	}
+}
+
 func TestProductionValidation(t *testing.T) {
 	cfg := validConfig()
 	cfg.General.Environment = EnvironmentProduction

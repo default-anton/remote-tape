@@ -12,11 +12,12 @@ type provisioningRegion struct {
 }
 
 type provisioningSize struct {
-	Slug         string `json:"slug"`
-	Label        string `json:"label"`
-	Description  string `json:"description"`
-	Recommended  bool   `json:"recommended"`
-	DedicatedCPU bool   `json:"dedicated_cpu"`
+	Slug            string `json:"slug"`
+	Label           string `json:"label"`
+	Description     string `json:"description"`
+	Recommended     bool   `json:"recommended"`
+	DedicatedCPU    bool   `json:"dedicated_cpu"`
+	DevelopmentOnly bool   `json:"-"`
 }
 
 type provisioningDefaults struct {
@@ -45,8 +46,12 @@ type provisioningOptions struct {
 }
 
 const (
-	defaultProvisioningRegion = "nyc3"
-	defaultProvisioningSize   = "s-2vcpu-4gb"
+	provisioningEnvironmentDevelopment = "development"
+	provisioningEnvironmentProduction  = "production"
+
+	devOnlyCheapestProvisioningSize = "s-1vcpu-512mb-10gb"
+	defaultProvisioningRegion       = "nyc3"
+	defaultProvisioningSize         = "s-2vcpu-4gb"
 )
 
 var errInvalidProvisioningSelection = provisioningValidationError{}
@@ -69,6 +74,7 @@ var provisioningCatalog = provisioningOptions{
 		{Slug: "syd1", Label: "Sydney 1"},
 	},
 	Sizes: []provisioningSize{
+		{Slug: devOnlyCheapestProvisioningSize, Label: "Shared CPU Basic", Description: "1 vCPU / 512 MB / 10 GB — development-only cheapest size; not for recording-quality validation", DedicatedCPU: false, DevelopmentOnly: true},
 		{Slug: "s-2vcpu-2gb", Label: "Shared CPU Basic", Description: "2 vCPU / 2 GB / 60 GB — low-cost small session", DedicatedCPU: false},
 		{Slug: "s-2vcpu-4gb", Label: "Shared CPU Basic", Description: "2 vCPU / 4 GB / 80 GB — recommended default", Recommended: true, DedicatedCPU: false},
 		{Slug: "s-4vcpu-8gb", Label: "Shared CPU Basic", Description: "4 vCPU / 8 GB / 160 GB — larger shared session", DedicatedCPU: false},
@@ -76,18 +82,18 @@ var provisioningCatalog = provisioningOptions{
 		{Slug: "c-4", Label: "Dedicated CPU CPU-Optimized", Description: "4 vCPU / 8 GB / 50 GB — larger production session", DedicatedCPU: true},
 	},
 	Availability: map[string][]string{
-		"nyc1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
-		"nyc2": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
-		"nyc3": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
-		"sfo2": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"sfo3": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"ams3": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"fra1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
-		"lon1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"blr1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"sgp1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"tor1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
-		"syd1": []string{"s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
+		"nyc1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
+		"nyc2": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
+		"nyc3": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
+		"sfo2": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"sfo3": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"ams3": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"fra1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
+		"lon1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"blr1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"sgp1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"tor1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb", "c-2", "c-4"},
+		"syd1": []string{devOnlyCheapestProvisioningSize, "s-2vcpu-2gb", "s-2vcpu-4gb", "s-4vcpu-8gb"},
 	},
 	RecommendedSizeByRegion: map[string]string{
 		"nyc1": "s-2vcpu-4gb",
@@ -105,53 +111,97 @@ var provisioningCatalog = provisioningOptions{
 	},
 }
 
-func provisioningOptionsFor(region, size string) provisioningOptions {
-	options := provisioningCatalog
+func provisioningOptionsFor(environment, region, size string) provisioningOptions {
+	options := catalogForEnvironment(environment)
 	options.Defaults = provisioningDefaults{Region: region, Size: size}
 	return options
 }
 
-func validateProvisioningCatalogDefaults(region, size string) error {
-	if err := validateProvisioningSelection(region, size); err != nil {
+func validateProvisioningCatalogDefaults(environment, region, size string) error {
+	if err := validateProvisioningSelection(environment, region, size); err != nil {
 		return fmt.Errorf("configured provisioning defaults are invalid: %w", err)
 	}
 	return nil
 }
 
-func validateProvisioningSelection(region, size string) error {
+func validateProvisioningSelection(environment, region, size string) error {
 	region = strings.TrimSpace(region)
 	size = strings.TrimSpace(size)
-	if !supportedRegion(region) {
-		return provisioningValidationError{message: fmt.Sprintf("unsupported instance region %q; choose one of: %s", region, strings.Join(regionSlugs(), ", "))}
+	options := catalogForEnvironment(environment)
+	if !supportedRegion(options, region) {
+		return provisioningValidationError{message: fmt.Sprintf("unsupported instance region %q; choose one of: %s", region, strings.Join(regionSlugs(options), ", "))}
 	}
-	if !supportedSize(size) {
-		return provisioningValidationError{message: fmt.Sprintf("unsupported instance size %q; choose one of: %s", size, strings.Join(sizeSlugs(), ", "))}
+	if isDevelopmentOnlySize(size) && normalizeProvisioningEnvironment(environment) != provisioningEnvironmentDevelopment {
+		return provisioningValidationError{message: fmt.Sprintf("instance size %q is development-only", size)}
 	}
-	if !slices.Contains(provisioningCatalog.Availability[region], size) {
+	if !supportedSize(options, size) {
+		return provisioningValidationError{message: fmt.Sprintf("unsupported instance size %q; choose one of: %s", size, strings.Join(sizeSlugs(options), ", "))}
+	}
+	if !slices.Contains(options.Availability[region], size) {
 		return provisioningValidationError{message: fmt.Sprintf("instance size %q is not available in region %q", size, region)}
 	}
 	return nil
 }
 
-func supportedRegion(region string) bool {
-	return slices.Contains(regionSlugs(), region)
+func catalogForEnvironment(environment string) provisioningOptions {
+	if normalizeProvisioningEnvironment(environment) == provisioningEnvironmentDevelopment {
+		return copyProvisioningOptions(provisioningCatalog)
+	}
+	options := copyProvisioningOptions(provisioningCatalog)
+	options.Sizes = slices.DeleteFunc(options.Sizes, func(size provisioningSize) bool {
+		return size.DevelopmentOnly
+	})
+	for region, sizes := range options.Availability {
+		options.Availability[region] = slices.DeleteFunc(sizes, isDevelopmentOnlySize)
+	}
+	return options
 }
 
-func supportedSize(size string) bool {
-	return slices.Contains(sizeSlugs(), size)
+func copyProvisioningOptions(options provisioningOptions) provisioningOptions {
+	copied := options
+	copied.Regions = slices.Clone(options.Regions)
+	copied.Sizes = slices.Clone(options.Sizes)
+	copied.Availability = make(map[string][]string, len(options.Availability))
+	for region, sizes := range options.Availability {
+		copied.Availability[region] = slices.Clone(sizes)
+	}
+	copied.RecommendedSizeByRegion = make(map[string]string, len(options.RecommendedSizeByRegion))
+	for region, size := range options.RecommendedSizeByRegion {
+		copied.RecommendedSizeByRegion[region] = size
+	}
+	return copied
 }
 
-func regionSlugs() []string {
-	slugs := make([]string, 0, len(provisioningCatalog.Regions))
-	for _, region := range provisioningCatalog.Regions {
+func normalizeProvisioningEnvironment(environment string) string {
+	if strings.TrimSpace(environment) == provisioningEnvironmentDevelopment {
+		return provisioningEnvironmentDevelopment
+	}
+	return provisioningEnvironmentProduction
+}
+
+func isDevelopmentOnlySize(size string) bool {
+	return size == devOnlyCheapestProvisioningSize
+}
+
+func supportedRegion(options provisioningOptions, region string) bool {
+	return slices.Contains(regionSlugs(options), region)
+}
+
+func supportedSize(options provisioningOptions, size string) bool {
+	return slices.Contains(sizeSlugs(options), size)
+}
+
+func regionSlugs(options provisioningOptions) []string {
+	slugs := make([]string, 0, len(options.Regions))
+	for _, region := range options.Regions {
 		slugs = append(slugs, region.Slug)
 	}
 	return slugs
 }
 
-func sizeSlugs() []string {
-	slugs := make([]string, 0, len(provisioningCatalog.Sizes))
-	for _, size := range provisioningCatalog.Sizes {
+func sizeSlugs(options provisioningOptions) []string {
+	slugs := make([]string, 0, len(options.Sizes))
+	for _, size := range options.Sizes {
 		slugs = append(slugs, size.Slug)
 	}
 	return slugs

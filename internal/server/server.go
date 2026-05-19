@@ -17,6 +17,7 @@ import (
 )
 
 type Options struct {
+	Environment         string
 	ControlPlaneURL     string
 	SessionsBaseDomain  string
 	DefaultRegion       string
@@ -44,7 +45,7 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) (http.Handler, err
 	if len(options) > 0 {
 		opts = mergeOptions(opts, options[0])
 	}
-	if err := validateProvisioningCatalogDefaults(opts.DefaultRegion, opts.DefaultInstanceSize); err != nil {
+	if err := validateProvisioningCatalogDefaults(opts.Environment, opts.DefaultRegion, opts.DefaultInstanceSize); err != nil {
 		return nil, err
 	}
 	srv := &Server{
@@ -74,6 +75,7 @@ func New(db *sql.DB, logger *slog.Logger, options ...Options) (http.Handler, err
 
 func defaultOptions() Options {
 	return Options{
+		Environment:         provisioningEnvironmentDevelopment,
 		ControlPlaneURL:     "http://127.0.0.1:8080",
 		SessionsBaseDomain:  "sessions.localhost",
 		DefaultRegion:       defaultProvisioningRegion,
@@ -83,6 +85,9 @@ func defaultOptions() Options {
 }
 
 func mergeOptions(base Options, override Options) Options {
+	if override.Environment != "" {
+		base.Environment = override.Environment
+	}
 	if override.ControlPlaneURL != "" {
 		base.ControlPlaneURL = override.ControlPlaneURL
 	}

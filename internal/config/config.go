@@ -16,6 +16,8 @@ import (
 const (
 	EnvironmentDevelopment = "development"
 	EnvironmentProduction  = "production"
+
+	devOnlyCheapestInstanceSize = "s-1vcpu-512mb-10gb"
 )
 
 type Config struct {
@@ -192,6 +194,9 @@ func (c Config) Validate() error {
 	}
 	if c.Provisioning.FinalizationTimeout <= 0 {
 		errs = append(errs, errors.New("REMOTE_TAPE_FINALIZATION_TIMEOUT must be positive"))
+	}
+	if strings.TrimSpace(c.Provisioning.DefaultInstanceSize) == devOnlyCheapestInstanceSize && c.General.Environment != EnvironmentDevelopment {
+		errs = append(errs, fmt.Errorf("REMOTE_TAPE_DEFAULT_INSTANCE_SIZE=%s is allowed only when REMOTE_TAPE_ENV=development", devOnlyCheapestInstanceSize))
 	}
 	if !c.Security.DigitalOceanAPIToken.Set() {
 		errs = append(errs, errors.New("REMOTE_TAPE_DIGITALOCEAN_API_TOKEN is required"))
